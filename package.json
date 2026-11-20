@@ -1,0 +1,24 @@
+{
+  "name": "ai-text-hub-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted AI Text Automation Hub on Cloudflare Workers (D1 + KV + Remote MCP OAuth 2.1 + iOS Shortcuts)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "latest",
+    "@modelcontextprotocol/sdk": "latest",
+    "agents": "latest",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.8.3",
+    "wrangler": "latest"
+  }
+}
