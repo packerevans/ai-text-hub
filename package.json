@@ -13,6 +13,7 @@
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "latest",
     "@modelcontextprotocol/sdk": "latest",
+    "@modelcontextprotocol/server": "^2.4.0",
     "agents": "latest",
     "zod": "^4.0.0"
   },

@@ -207,10 +207,10 @@ export function buildMcpServer(env: Env, scopes: string[]) {
         let resolvedRecipients = recipient.trim();
         let resolvedTitle = (chat_title || "").trim();
 
-        // If recipient looks like a name (no digits), resolve via contacts or known chats
+        // If recipient looks like a name (no digits), resolve via known chats (with phone recipients) or contacts
         if (!/\d{7,}/.test(resolvedRecipients)) {
           const chatMatches = await readChatMessages(env.DB, resolvedRecipients, 1);
-          if (chatMatches.length > 0 && chatMatches[0].recipients) {
+          if (chatMatches.length > 0 && chatMatches[0].recipients && /\d{7,}/.test(chatMatches[0].recipients)) {
             resolvedRecipients = chatMatches[0].recipients;
             resolvedTitle = resolvedTitle || chatMatches[0].chat_title;
           } else {

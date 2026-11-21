@@ -137,7 +137,14 @@ export function normalizePhone(raw: string): string {
 export function isShortCodeOrOtp(sender: string, recipients: string, body: string): boolean {
   const senderDigits = sender.replace(/\D/g, "");
   const recipDigits = recipients.replace(/\D/g, "");
-  if ((senderDigits.length >= 4 && senderDigits.length <= 6) || (recipDigits.length >= 4 && recipDigits.length <= 6 && !recipients.includes("+") && !recipients.includes(","))) {
+  const senderIsShortCode = !/[a-z]/i.test(sender) && senderDigits.length >= 4 && senderDigits.length <= 6;
+  const recipIsShortCode =
+    !/[a-z]/i.test(recipients) &&
+    recipDigits.length >= 4 &&
+    recipDigits.length <= 6 &&
+    !recipients.includes("+") &&
+    !recipients.includes(",");
+  if (senderIsShortCode || recipIsShortCode) {
     return true;
   }
   const lower = body.toLowerCase();
@@ -328,8 +335,8 @@ export async function claimPendingOutbox(db: D1Database, limit = 10): Promise<Ou
   const claimStmt = db.prepare(
     `UPDATE outbox SET status = 'claimed', claimed_at = ? WHERE id = ? AND status = 'pending'`
   );
-  await db.batch(rows.map((r) => claimStmt.bind(now, r.id)));
-  return rows;
+  const claimResults = await db.batch(rows.map((r) => claimStmt.bind(now, r.id)));
+  return rows.filter((_, idx) => (claimResults[idx]?.meta?.changes ?? 0) > 0);
 }
 
 export async function ackOutboxItem(db: D1Database, id: string): Promise<boolean> {

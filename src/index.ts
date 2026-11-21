@@ -461,6 +461,12 @@ export default {
     if (url.pathname === "/mcp" && (await verifyMcpBearerFallback(request, env))) {
       return handleMcpRequest(request, env, ctx, ["*"]);
     }
+    // Serve RFC 9728 protected-resource metadata at both root and /mcp suffix for maximum MCP client compatibility
+    if (url.pathname === "/.well-known/oauth-protected-resource") {
+      const rewritten = new URL(request.url);
+      rewritten.pathname = "/.well-known/oauth-protected-resource/mcp";
+      return getOAuthProvider(url.origin).fetch(new Request(rewritten, request), env, ctx);
+    }
     return getOAuthProvider(url.origin).fetch(request, env, ctx);
   },
 };
