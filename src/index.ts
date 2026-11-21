@@ -112,7 +112,7 @@ const defaultHandler = {
         items = parseCustomDelimitedMessages(raw);
       }
       const stats = await ingestMessages(env.DB, items);
-      return Response.json({ ok: true, ...stats });
+      return Response.json({ ok: true, processed: true, ...stats });
     }
 
     // ── 2. First-Run Setup (/setup) ──
