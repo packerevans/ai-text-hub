@@ -10,7 +10,7 @@ A 100% private, single-user AI Text Automation Hub running on **Cloudflare Worke
    - Click **Deploy to Cloudflare** to auto-provision your Worker, D1 database, and OAuth KV namespace.
    - Open your deployed `.workers.dev` URL, create your Master Password, copy your **Shortcut API Key** (shown once), and drag-and-drop your exported Contacts `.vcf` file into the dashboard.
 2. **iPhone Shortcut**
-   - Install the combined **Send → Post** Shortcut: [Add AI Text Hub iOS Shortcut](https://www.icloud.com/shortcuts/27c3140eeb264b6a863f8071ca14bad9) and paste your Worker URL + Shortcut API Key into the 2 Import Questions.
+   - Install the combined **Send → Post** Shortcut: [Add AI Text Hub iOS Shortcut](https://www.icloud.com/shortcuts/1f95acb7a59448d0a7595be40707fa88) and paste your Worker URL + Shortcut API Key into the 2 Import Questions.
    - Add one iOS Personal Automation: **When App `Messages` is Opened → Run Shortcut**.
 3. **Connect Claude, ChatGPT, or Grok**
    - Add `https://<your-worker>.workers.dev/mcp` as a Remote MCP server and sign in with your Master Password (OAuth 2.1).
