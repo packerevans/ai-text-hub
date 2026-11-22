@@ -91,6 +91,32 @@ const defaultHandler = {
       return Response.json({ ok: true, acked: deleted });
     }
 
+    if (path === "/api/ai-status" && method === "GET") {
+      if (!(await verifyShortcutApiKey(request, env))) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const row = await env.DB.prepare("SELECT value FROM user_preferences WHERE key = 'ai_listening_until'").first<{ value: string }>();
+      const until = row ? parseInt(row.value, 10) || 0 : 0;
+      return Response.json({ ok: true, listening: until > Date.now() ? 1 : 0 });
+    }
+
+    if (path === "/api/ai-status" && method === "POST") {
+      if (!(await verifyShortcutApiKey(request, env)) && !(await verifyMcpBearerFallback(request, env))) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const body = (await request.json().catch(() => ({}))) as { listening?: boolean; ttl_seconds?: number };
+      const ttlMs = Math.min(45, Math.max(2, Number(body.ttl_seconds) || 20)) * 1000;
+      const until = body.listening ? Date.now() + ttlMs : 0;
+      await env.DB.prepare(
+        `INSERT INTO user_preferences (key, value, updated_at)
+         VALUES ('ai_listening_until', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+        .bind(String(until), Date.now())
+        .run();
+      return Response.json({ ok: true, listening: until > Date.now() ? 1 : 0 });
+    }
+
     if (path === "/api/messages" && method === "POST") {
       if (!(await verifyShortcutApiKey(request, env))) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });

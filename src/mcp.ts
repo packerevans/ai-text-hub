@@ -103,6 +103,26 @@ export function buildMcpServer(env: Env, scopes: string[]) {
     }
   );
 
+  server.tool(
+    "set_ai_listening",
+    "Signal to the user's iPhone Shortcut whether you are actively drafting replies right now (listening=true) or finished queuing replies (listening=false).",
+    {
+      listening: z.boolean().describe("True while actively drafting replies; false once done."),
+      ttl_seconds: z.number().int().min(2).max(45).optional().default(20),
+    },
+    async ({ listening, ttl_seconds }) => {
+      const until = listening ? Date.now() + ttl_seconds * 1000 : 0;
+      await env.DB.prepare(
+        `INSERT INTO user_preferences (key, value, updated_at)
+         VALUES ('ai_listening_until', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+        .bind(String(until), Date.now())
+        .run();
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, listening }) }] };
+    }
+  );
+
   if (hasScope("messages:read")) {
     server.tool(
       "list_chats",
