@@ -23,6 +23,7 @@ import {
   ingestMessages,
   parseCustomDelimitedMessages,
   parseVcf,
+  releaseOutboxItem,
   resetAuthRateLimit,
   type IncomingMessageInput,
 } from "./db";
@@ -89,6 +90,15 @@ const defaultHandler = {
       }
       const deleted = await ackOutboxItem(env.DB, ackMatch[1]);
       return Response.json({ ok: true, acked: deleted });
+    }
+
+    const releaseMatch = path.match(/^\/api\/outbox\/([a-zA-Z0-9_-]+)\/release$/);
+    if (releaseMatch && method === "POST") {
+      if (!(await verifyShortcutApiKey(request, env))) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const released = await releaseOutboxItem(env.DB, releaseMatch[1]);
+      return Response.json({ ok: true, released });
     }
 
     if (path === "/api/ai-status" && method === "GET") {

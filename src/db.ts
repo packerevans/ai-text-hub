@@ -134,6 +134,53 @@ export function normalizePhone(raw: string): string {
   return digits;
 }
 
+export function countChatParticipants(recipientsOrTitle: string): number {
+  const raw = (recipientsOrTitle || "").trim();
+  if (!raw) return 0;
+  // Group chats from iOS Shortcuts arrive as "num1 + num2 + num3" or comma-separated
+  if (raw.includes(" + ") || raw.includes(",")) {
+    const parts = raw
+      .split(/\s+\+\s+|,/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    return parts.length;
+  }
+  const phoneMatches = raw.match(/\+?\d[\d\s()-]{6,}\d/g);
+  return phoneMatches ? Math.max(1, phoneMatches.length) : 1;
+}
+
+export async function resolveFriendlyChatTitle(
+  db: D1Database,
+  chatTitle: string,
+  recipients: string
+): Promise<string> {
+  const title = chatTitle.trim();
+  const hasLetters = /[a-zA-Z]/.test(title);
+  if (hasLetters) return title;
+
+  const source = recipients || title;
+  const parts = source
+    .split(/\s+\+\s+|,/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return title;
+
+  const resolved: string[] = [];
+  for (const part of parts) {
+    const norm = normalizePhone(part);
+    if (norm.length >= 7) {
+      const row = await db
+        .prepare("SELECT name FROM contacts WHERE normalized_phone = ? LIMIT 1")
+        .bind(norm)
+        .first<{ name: string }>();
+      resolved.push(row ? row.name : part);
+    } else {
+      resolved.push(part);
+    }
+  }
+  return resolved.join(", ");
+}
+
 export function isShortCodeOrOtp(sender: string, recipients: string, body: string): boolean {
   const senderDigits = sender.replace(/\D/g, "");
   const recipDigits = recipients.replace(/\D/g, "");
@@ -224,14 +271,19 @@ export async function ingestMessages(
 
   for (const item of items.slice(0, 100)) {
     const body = (item.body || "").trim();
-    const chatTitle = (item.chat_title || "").trim();
-    if (!body || !chatTitle || body === "\uFFFC") continue;
-    const recipients = (item.recipients || chatTitle).trim();
-    const sender = (item.sender || chatTitle).trim();
+    const rawChatTitle = (item.chat_title || "").trim();
+    if (!body || !rawChatTitle || body === "\uFFFC") continue;
+    const recipients = (item.recipients || rawChatTitle).trim();
+    const sender = (item.sender || rawChatTitle).trim();
+    // Never store or pass group chats with more than 4 people to the AI
+    if (countChatParticipants(recipients) > 4 || countChatParticipants(rawChatTitle) > 4) {
+      continue;
+    }
     if (isShortCodeOrOtp(sender, recipients, body)) {
       filteredOtp++;
       continue;
     }
+    const chatTitle = await resolveFriendlyChatTitle(db, rawChatTitle, recipients);
     const sentAt = parseTimestampMs(item.sent_at);
     const sentAtLabel = typeof item.sent_at === "string" ? item.sent_at.trim() : new Date(sentAt).toISOString();
     const chatKey = chatTitle.toLowerCase();
@@ -342,6 +394,15 @@ export async function claimPendingOutbox(db: D1Database, limit = 10): Promise<Ou
 export async function ackOutboxItem(db: D1Database, id: string): Promise<boolean> {
   await ensureSchema(db);
   const res = await db.prepare("DELETE FROM outbox WHERE id = ?").bind(id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+export async function releaseOutboxItem(db: D1Database, id: string): Promise<boolean> {
+  await ensureSchema(db);
+  const res = await db
+    .prepare("UPDATE outbox SET status = 'pending', claimed_at = NULL WHERE id = ?")
+    .bind(id)
+    .run();
   return (res.meta?.changes ?? 0) > 0;
 }
 

@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import {
+  countChatParticipants,
   getAllPreferences,
   getConfig,
   listChats,
@@ -25,12 +26,17 @@ const ONBOARDING_QUESTIONS = [
   {
     key: "texting_style",
     question:
-      "How should your drafted texts sound? (e.g., lowercase & casual, short 1-2 sentences, proper punctuation, emoji habits, etc.)",
+      "How should your drafted texts sound? Include catchphrases, punctuation habits, and whether you want a pattern like: acknowledge their last message -> transition to your ask -> optional question.",
   },
   {
-    key: "approval_preference",
+    key: "schedule_context",
     question:
-      "Should I always show you drafted texts for confirmation before queuing them, or can I queue replies to your trusted contacts directly?",
+      "What should I know about your weekly schedule, classes/credits, homework/study blocks, or work hours when suggesting times to meet?",
+  },
+  {
+    key: "auto_response_preference",
+    question:
+      "Consumer ChatGPT, Claude, and Grok web connectors cannot wake up automatically from a Cloudflare trigger on their own—they draft when you chat with them. Would you like to keep on-demand drafting in chat, or do you want to integrate an external LLM API key / custom agent endpoint (e.g., Ollama, OpenAI, Gemini) for automatic background drafting?",
   },
 ];
 
@@ -131,7 +137,9 @@ export function buildMcpServer(env: Env, scopes: string[]) {
         limit: z.number().int().min(1).max(50).optional().default(20),
       },
       async ({ limit }) => {
-        const chats = await listChats(env.DB, limit);
+        const chats = (await listChats(env.DB, limit)).filter(
+          (c) => countChatParticipants(c.recipients || c.chat_title) <= 4
+        );
         return {
           content: [
             {
@@ -155,7 +163,14 @@ export function buildMcpServer(env: Env, scopes: string[]) {
         limit: z.number().int().min(1).max(6).optional().default(6),
       },
       async ({ chat_title, limit }) => {
-        const msgs = await readChatMessages(env.DB, chat_title, limit);
+        if (countChatParticipants(chat_title) > 4) {
+          return {
+            content: [{ type: "text", text: "Blocked: Group chats with more than 4 people are never shared with the AI." }],
+          };
+        }
+        const msgs = (await readChatMessages(env.DB, chat_title, limit)).filter(
+          (m) => countChatParticipants(m.recipients || m.chat_title) <= 4
+        );
         const formatted = msgs.map((m) => ({
           chat_title: m.chat_title,
           recipients: m.recipients,
@@ -248,6 +263,12 @@ export function buildMcpServer(env: Env, scopes: string[]) {
             resolvedRecipients = contactMatches[0].phone;
             resolvedTitle = resolvedTitle || contactMatches[0].name;
           }
+        }
+
+        if (countChatParticipants(resolvedRecipients) > 4 || countChatParticipants(resolvedTitle) > 4) {
+          return {
+            content: [{ type: "text", text: "Blocked: Group chats with more than 4 people cannot be messaged by the AI." }],
+          };
         }
 
         const res = await queueOutboxItem(env.DB, config, {
