@@ -36,7 +36,7 @@ const ONBOARDING_QUESTIONS = [
   {
     key: "auto_response_preference",
     question:
-      "Consumer ChatGPT, Claude, and Grok web connectors cannot wake up automatically from a Cloudflare trigger on their own—they draft when you chat with them. Would you like to keep on-demand drafting in chat, or do you want to integrate an external LLM API key / custom agent endpoint (e.g., Ollama, OpenAI, Gemini) for automatic background drafting?",
+      "Background auto-drafting is OFF by default and requires additional setup (an external LLM API key or custom agent endpoint), because consumer ChatGPT, Claude, and Grok web connectors cannot run automatically from Cloudflare triggers. Would you like to keep it OFF (on-demand drafting in chat), or configure an external API/agent integration?",
   },
 ];
 
