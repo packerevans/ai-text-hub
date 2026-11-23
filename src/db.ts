@@ -270,6 +270,11 @@ export function isUserProActive(user: ConfigRow): boolean {
   return user.is_pro === 1 && (!user.pro_until || user.pro_until > Date.now());
 }
 
+export function isHostedInstance(originOrHost: string): boolean {
+  const lower = originOrHost.toLowerCase();
+  return lower.includes("ai-text-hub.textforme.workers.dev") || lower.includes("ai-text-hub.elevatedcleaning.workers.dev");
+}
+
 export async function recordAutoDraftUsage(db: D1Database, userId: number, units: number): Promise<void> {
   await ensureSchema(db);
   const today = utcToday();

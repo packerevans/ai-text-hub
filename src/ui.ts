@@ -1,4 +1,4 @@
-import { DAILY_FREE_AI_LIMIT, getEffectiveDailyUsage, isUserProActive } from "./db";
+import { DAILY_FREE_AI_LIMIT, getEffectiveDailyUsage, isHostedInstance, isUserProActive } from "./db";
 import type { AllowlistRow, ConfigRow } from "./types";
 
 function esc(s: string): string {
@@ -423,6 +423,7 @@ export function renderDashboardPage(params: {
   const chatgptLaunchUrl = `https://chatgpt.com/?q=${encodedPrompt}`;
   const grokLaunchUrl = `https://grok.com/?q=${encodedPrompt}`;
   const autoDraftOn = params.config.auto_draft_enabled === 1;
+  const hosted = isHostedInstance(params.origin);
   const isPro = isUserProActive(params.config);
   const dailyUsed = getEffectiveDailyUsage(params.config);
   const usagePct = isPro ? 100 : Math.min(100, Math.round((dailyUsed / DAILY_FREE_AI_LIMIT) * 100));
@@ -559,10 +560,14 @@ export function renderDashboardPage(params: {
       </div>
       <ul style="margin:10px 0 12px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
         <li>Drafts replies for new unread texts using built-in Cloudflare AI (approval menu still required before sending).</li>
-        <li>Daily usage: <strong>${isPro ? "Unlimited ($10/yr Plan Active)" : `${dailyUsed} / ${DAILY_FREE_AI_LIMIT} units`}</strong></li>
+        ${
+          hosted
+            ? `<li>Daily usage: <strong>${isPro ? "Unlimited ($10/yr Plan Active)" : `${dailyUsed} / ${DAILY_FREE_AI_LIMIT} units`}</strong></li>`
+            : `<li>Runs on your own Cloudflare Workers AI allowance (10,000 free Neurons/day).</li>`
+        }
       </ul>
       ${
-        isPro
+        !hosted || isPro
           ? ""
           : `<div style="height:6px;background:var(--surface-2);border:1px solid var(--border);margin-bottom:12px;">
                <div style="height:100%;width:${usagePct}%;background:var(--accent);"></div>

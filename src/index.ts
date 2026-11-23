@@ -30,6 +30,7 @@ import {
   importContacts,
   ingestMessages,
   isContactsSyncNeeded,
+  isHostedInstance,
   isUserProActive,
   markContactsSynced,
   parseCustomDelimitedMessages,
@@ -228,11 +229,12 @@ const defaultHandler = {
       }
       const stats = await ingestMessages(env.DB, items, apiUser.id);
       let autoDrafted = 0;
+      const hosted = isHostedInstance(url.hostname);
       if (
         stats.stored > 0 &&
         apiUser.auto_draft_enabled === 1 &&
         env.AI &&
-        (isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
+        (!hosted || isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
       ) {
         const target = items.find((m) => m.is_unread && m.body && m.body.trim().length > 0);
         if (target) {
