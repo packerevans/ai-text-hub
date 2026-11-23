@@ -747,7 +747,14 @@ export async function queueOutboxItem(
     };
   }
 
-  const normRecip = normalizePhone(params.recipients);
+  let resolvedRecipients = params.recipients.trim();
+  if (normalizePhone(resolvedRecipients).length < 7) {
+    const contactMatch = (await searchContactsWithPriority(db, resolvedRecipients, 1, config.id))[0];
+    if (contactMatch?.phone) {
+      resolvedRecipients = contactMatch.phone;
+    }
+  }
+  const normRecip = normalizePhone(resolvedRecipients);
   const allowRows = (
     await db.prepare("SELECT * FROM allowlist WHERE user_id = ?").bind(config.id).all<AllowlistRow>()
   ).results || [];
@@ -756,7 +763,7 @@ export async function queueOutboxItem(
     if (a.target_type === "phone") return normalizePhone(a.target_value) === normRecip;
     return (
       a.target_value.toLowerCase() === (params.chatTitle || "").toLowerCase() ||
-      a.target_value.toLowerCase() === params.recipients.toLowerCase()
+      a.target_value.toLowerCase() === resolvedRecipients.toLowerCase()
     );
   });
 
@@ -778,7 +785,7 @@ export async function queueOutboxItem(
         `INSERT INTO outbox (id, user_id, chat_title, recipients, body, require_approval, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`
       )
-      .bind(id, config.id, params.chatTitle || "", params.recipients, params.body, requireApproval ? 1 : 0, now),
+      .bind(id, config.id, params.chatTitle || "", resolvedRecipients, params.body, requireApproval ? 1 : 0, now),
     db.prepare("INSERT INTO send_log (user_id, sent_at) VALUES (?, ?)").bind(config.id, now),
     db.prepare("DELETE FROM send_log WHERE user_id = ? AND sent_at < ?").bind(config.id, now - 86_400_000),
   ]);
