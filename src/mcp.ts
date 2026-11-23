@@ -2,12 +2,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import {
+  DAILY_FREE_AI_LIMIT,
   completeReminder,
   countChatParticipants,
   createReminder,
   getAllPreferences,
   getConfig,
+  getEffectiveDailyUsage,
   importContacts,
+  isUserProActive,
   listChats,
   listReminders,
   normalizePhone,
@@ -41,9 +44,9 @@ const ONBOARDING_QUESTIONS = [
       "What should I know about your weekly schedule, classes/credits, homework/study blocks, or work hours when suggesting times to meet?",
   },
   {
-    key: "auto_response_preference",
+    key: "sample_replies_calibration",
     question:
-      "Background auto-drafting is OFF by default and requires additional setup (an external LLM API key or custom agent endpoint), because consumer ChatGPT, Claude, and Grok web connectors cannot run automatically from Cloudflare triggers. Would you like to keep it OFF (on-demand drafting in chat), or configure an external API/agent integration?",
+      "To learn how you actually text different people (so Auto-Draft and my drafts sound like you), reply naturally to these 3 sample texts: (1) Mom: 'Hey, are you free for dinner Sunday?' (2) Close friend: 'yo what are you up to tonight' (3) Coworker/client: 'Can you send me that update when you get a sec?'",
   },
 ];
 
@@ -60,16 +63,28 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
     "Fetch backend setup questions and currently saved user preferences (name priorities, nicknames, texting style). Call this on first setup or when onboarding a new chat.",
     {},
     async () => {
-      const saved = await getAllPreferences(env.DB, userId);
+      const [saved, config] = await Promise.all([getAllPreferences(env.DB, userId), getConfig(env.DB, userId)]);
       const missing = ONBOARDING_QUESTIONS.filter((q) => !saved[q.key]);
+      const autoDraftOn = config?.auto_draft_enabled === 1;
+      const maxParticipants = Math.min(4, Math.max(1, config?.auto_draft_max_participants ?? 4));
+      const dailyUsed = config ? getEffectiveDailyUsage(config) : 0;
+      const isPro = config ? isUserProActive(config) : false;
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify(
               {
-                instructions:
-                  "If any onboarding questions are unanswered, ask the user briefly and conversationally (a few at a time), then save their answers using save_user_preferences.",
+                instructions: autoDraftOn
+                  ? `Auto-Draft Replies is ACTIVATED on this account for chats with 1–${maxParticipants} people (${isPro ? "Unlimited $12/yr plan" : `${dailyUsed}/${DAILY_FREE_AI_LIMIT} daily credits used`}). Let the user know Auto-Draft is active, ask any unanswered setup questions (including the sample_replies_calibration prompts so they reply to texts from different people), and save both a distilled texting_style summary and sample_replies_calibration using save_user_preferences.`
+                  : "Auto-Draft Replies is currently OFF on the dashboard (user can turn it on in their dashboard with 2,000 free credits/day or $12/yr Unlimited, for 1–4 person chats). Ask any unanswered setup questions (including sample_replies_calibration) and save their answers using save_user_preferences.",
+                auto_draft_status: {
+                  enabled: autoDraftOn,
+                  max_participants: maxParticipants,
+                  daily_credits_used: dailyUsed,
+                  daily_credits_limit: DAILY_FREE_AI_LIMIT,
+                  is_pro: isPro,
+                },
                 saved_preferences: saved,
                 unanswered_questions: missing,
                 all_questions: ONBOARDING_QUESTIONS,

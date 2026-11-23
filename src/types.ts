@@ -25,6 +25,7 @@ export interface ConfigRow {
   require_approval_default: number;
   allowlist_only: number;
   auto_draft_enabled?: number;
+  auto_draft_max_participants?: number;
   auto_draft_daily_used?: number;
   auto_draft_day?: string;
   is_pro?: number;

@@ -271,6 +271,9 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   if (!(await hasColumn(db, "users", "auto_draft_enabled"))) {
     await db.prepare("ALTER TABLE users ADD COLUMN auto_draft_enabled INTEGER NOT NULL DEFAULT 0").run();
   }
+  if (!(await hasColumn(db, "users", "auto_draft_max_participants"))) {
+    await db.prepare("ALTER TABLE users ADD COLUMN auto_draft_max_participants INTEGER NOT NULL DEFAULT 4").run();
+  }
   if (!(await hasColumn(db, "users", "auto_draft_daily_used"))) {
     await db.prepare("ALTER TABLE users ADD COLUMN auto_draft_daily_used INTEGER NOT NULL DEFAULT 0").run();
   }

@@ -274,6 +274,7 @@ const defaultHandler = {
         (!hosted || isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
       ) {
         const seenChats = new Set<string>();
+        const maxParticipants = Math.min(4, Math.max(1, Number(apiUser.auto_draft_max_participants ?? 4) || 4));
         for (const m of items) {
           const body = (m.body || "").trim();
           const title = (m.chat_title || "").trim();
@@ -286,7 +287,7 @@ const defaultHandler = {
             body.length > 0 &&
             body !== "\uFFFC" &&
             participants >= 1 &&
-            participants <= 4 &&
+            participants <= maxParticipants &&
             !isShortCodeOrOtp(sender, recips, body) &&
             !seenChats.has(key)
           ) {
@@ -754,12 +755,26 @@ const defaultHandler = {
       if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
+      const action = String(form.get("action") || "").trim();
+      const rawMax = parseInt(String(form.get("max_participants") || ""), 10);
+      const maxP = Number.isFinite(rawMax) ? Math.min(4, Math.max(1, rawMax)) : Math.min(4, Math.max(1, activeUser.auto_draft_max_participants ?? 4));
+      if (action === "update_max") {
+        await env.DB.prepare("UPDATE users SET auto_draft_max_participants = ? WHERE id = ?")
+          .bind(maxP, activeUser.id)
+          .run();
+        return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+          notice: `Auto-Draft now replies to chats with 1–${maxP} people.`,
+        });
+      }
       const nextVal = activeUser.auto_draft_enabled === 1 ? 0 : 1;
-      await env.DB.prepare("UPDATE users SET auto_draft_enabled = ? WHERE id = ?")
-        .bind(nextVal, activeUser.id)
+      await env.DB.prepare("UPDATE users SET auto_draft_enabled = ?, auto_draft_max_participants = ? WHERE id = ?")
+        .bind(nextVal, maxP, activeUser.id)
         .run();
       return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
-        notice: nextVal === 1 ? "Background Auto-Draft AI enabled." : "Background Auto-Draft AI paused.",
+        notice:
+          nextVal === 1
+            ? `Background Auto-Draft AI enabled for chats with 1–${maxP} people.`
+            : "Background Auto-Draft AI paused.",
       });
     }
 
