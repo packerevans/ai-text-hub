@@ -256,6 +256,7 @@ const defaultHandler = {
       const stats = await ingestMessages(env.DB, items, apiUser.id);
       const hosted = isHostedInstance(url.hostname);
       let aiPendingCount = 0;
+      let targetChats: IncomingMessageInput[] = [];
       let draftDebug = !env.AI
         ? "no_ai_binding"
         : apiUser.auto_draft_enabled !== 1
@@ -265,6 +266,7 @@ const defaultHandler = {
         : hosted && !isUserProActive(apiUser) && getEffectiveDailyUsage(apiUser) >= DAILY_FREE_AI_LIMIT
         ? "quota_exceeded"
         : "no_eligible_chats";
+      try {
       if (
         stats.stored > 0 &&
         apiUser.auto_draft_enabled === 1 &&
@@ -272,7 +274,6 @@ const defaultHandler = {
         (!hosted || isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
       ) {
         const seenChats = new Set<string>();
-        const targetChats: IncomingMessageInput[] = [];
         for (const m of items) {
           const body = (m.body || "").trim();
           const title = (m.chat_title || "").trim();
@@ -343,8 +344,8 @@ const defaultHandler = {
           aiPendingCount = remaining.length;
           if (remaining.length > 0) {
             await env.OAUTH_KV.put(`ai_pending:${apiUser.id}`, String(remaining.length), {
-              expirationTtl: 30,
-            });
+              expirationTtl: 60,
+            }).catch(() => {});
           }
           // Draft the first message immediately so it pops up right away
           await draftOne(targetChats[0]);
@@ -357,9 +358,9 @@ const defaultHandler = {
                   await draftOne(nextChat);
                   left -= 1;
                   if (left > 0) {
-                    await env.OAUTH_KV.put(`ai_pending:${apiUser.id}`, String(left), { expirationTtl: 30 });
+                    await env.OAUTH_KV.put(`ai_pending:${apiUser.id}`, String(left), { expirationTtl: 60 }).catch(() => {});
                   } else {
-                    await env.OAUTH_KV.delete(`ai_pending:${apiUser.id}`);
+                    await env.OAUTH_KV.delete(`ai_pending:${apiUser.id}`).catch(() => {});
                   }
                 }
               })()
@@ -367,6 +368,25 @@ const defaultHandler = {
           }
         }
       }
+      } catch (outerErr) {
+        draftDebug = `outer_err:${outerErr instanceof Error ? outerErr.message : String(outerErr)}`;
+        console.error("[AUTO_DRAFT_OUTER_ERR]", draftDebug);
+      }
+      const debugPayload = JSON.stringify({
+        draftDebug,
+        stored: stats.stored,
+        duplicates: stats.duplicates,
+        totalItems: items.length,
+        targetCount: targetChats.length,
+        targets: targetChats.map((t) => ({ chat: t.chat_title, sender: t.sender, recips: t.recipients, unread: t.is_unread })),
+        at: new Date().toISOString(),
+      });
+      await env.DB.prepare(
+        "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?, 'last_draft_debug', ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+      )
+        .bind(apiUser.id, debugPayload, Date.now())
+        .run()
+        .catch(() => {});
       return Response.json({
         ok: true,
         processed: true,
