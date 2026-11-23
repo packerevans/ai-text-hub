@@ -256,6 +256,15 @@ const defaultHandler = {
       const stats = await ingestMessages(env.DB, items, apiUser.id);
       const hosted = isHostedInstance(url.hostname);
       let aiPendingCount = 0;
+      let draftDebug = !env.AI
+        ? "no_ai_binding"
+        : apiUser.auto_draft_enabled !== 1
+        ? "disabled"
+        : stats.stored <= 0
+        ? "no_new_stored"
+        : hosted && !isUserProActive(apiUser) && getEffectiveDailyUsage(apiUser) >= DAILY_FREE_AI_LIMIT
+        ? "quota_exceeded"
+        : "no_eligible_chats";
       if (
         stats.stored > 0 &&
         apiUser.auto_draft_enabled === 1 &&
@@ -290,7 +299,7 @@ const defaultHandler = {
           const styleHint = prefs["texting_style"]
             ? `Texting style: ${prefs["texting_style"]}.`
             : "Keep it short, natural, and casual.";
-          let draftDebug = "ok";
+          draftDebug = "ok";
           const draftOne = async (target: IncomingMessageInput) => {
             try {
               const aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", {
@@ -363,6 +372,7 @@ const defaultHandler = {
         processed: true,
         ...stats,
         ai_pending: aiPendingCount,
+        draft_debug: draftDebug,
       });
     }
 
