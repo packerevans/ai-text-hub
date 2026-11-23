@@ -97,12 +97,15 @@ const defaultHandler = {
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const [items, manifest] = await Promise.all([
+      const [items, manifest, pendingRaw] = await Promise.all([
         claimPendingOutbox(env.DB, 10, apiUser.id),
         claimShortcutManifest(env.DB, apiUser.id),
+        env.OAUTH_KV.get(`ai_pending:${apiUser.id}`),
       ]);
+      const aiPending = Math.max(0, parseInt(pendingRaw || "0", 10) || 0);
       return Response.json({
         count: items.length,
+        ai_pending: aiPending,
         items: items.map((i) => ({
           id: i.id,
           chat_title: i.chat_title,
@@ -252,71 +255,108 @@ const defaultHandler = {
       }
       const stats = await ingestMessages(env.DB, items, apiUser.id);
       const hosted = isHostedInstance(url.hostname);
+      let aiPendingCount = 0;
       if (
         stats.stored > 0 &&
         apiUser.auto_draft_enabled === 1 &&
         env.AI &&
         (!hosted || isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
       ) {
-        const target = items.find((m) => {
+        const seenChats = new Set<string>();
+        const targetChats: IncomingMessageInput[] = [];
+        for (const m of items) {
           const body = (m.body || "").trim();
           const title = (m.chat_title || "").trim();
           const recips = (m.recipients || title).trim();
           const sender = (m.sender || title).trim();
           const participants = Math.max(countChatParticipants(recips), countChatParticipants(title));
-          return (
+          const key = title.toLowerCase();
+          if (
             m.is_unread &&
             body.length > 0 &&
             body !== "\uFFFC" &&
             participants === 1 &&
-            !isShortCodeOrOtp(sender, recips, body)
-          );
-        });
-        if (target && env.AI) {
+            !isShortCodeOrOtp(sender, recips, body) &&
+            !seenChats.has(key)
+          ) {
+            seenChats.add(key);
+            targetChats.push(m);
+            if (targetChats.length >= 5) break;
+          }
+        }
+        if (targetChats.length > 0 && env.AI) {
           const aiBinding = env.AI;
-          ctx.waitUntil(
-            (async () => {
-              try {
-                const prefs = await getAllPreferences(env.DB, apiUser.id);
-                const styleHint = prefs["texting_style"] ? `Texting style: ${prefs["texting_style"]}.` : "Keep it short, natural, and casual.";
-                const aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", {
-                  messages: [
-                    {
-                      role: "system",
-                      content: `Draft a brief, helpful SMS reply on behalf of the user. ${styleHint} Output ONLY the reply text, no quotes.`,
-                    },
-                    {
-                      role: "user",
-                      content: `From ${target.sender || target.chat_title}: ${target.body}`,
-                    },
-                  ],
-                });
-                const draft = (aiRes?.response || "").trim().slice(0, 600);
-                if (draft) {
-                  const queued = await queueOutboxItem(
-                    env.DB,
-                    { ...apiUser, require_approval_default: 1 },
-                    {
-                      recipients: (target.recipients || target.chat_title).trim(),
-                      chatTitle: target.chat_title.trim(),
-                      body: draft,
-                    }
-                  );
-                  if (queued.ok) {
-                    await recordAutoDraftUsage(env.DB, apiUser.id, AI_UNITS_PER_DRAFT);
+          const prefs = await getAllPreferences(env.DB, apiUser.id);
+          const styleHint = prefs["texting_style"]
+            ? `Texting style: ${prefs["texting_style"]}.`
+            : "Keep it short, natural, and casual.";
+          const draftOne = async (target: IncomingMessageInput) => {
+            try {
+              const aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+                messages: [
+                  {
+                    role: "system",
+                    content: `Draft a brief, helpful SMS reply on behalf of the user. ${styleHint} Output ONLY the reply text, no quotes.`,
+                  },
+                  {
+                    role: "user",
+                    content: `From ${target.sender || target.chat_title}: ${target.body}`,
+                  },
+                ],
+              });
+              const draft = (aiRes?.response || "").trim().slice(0, 600);
+              if (draft) {
+                const queued = await queueOutboxItem(
+                  env.DB,
+                  { ...apiUser, require_approval_default: 1 },
+                  {
+                    recipients: (target.recipients || target.chat_title).trim(),
+                    chatTitle: target.chat_title.trim(),
+                    body: draft,
+                  }
+                );
+                if (queued.ok) {
+                  await recordAutoDraftUsage(env.DB, apiUser.id, AI_UNITS_PER_DRAFT);
+                }
+              }
+            } catch {
+              // Non-fatal
+            }
+          };
+
+          const remaining = targetChats.slice(1);
+          aiPendingCount = remaining.length;
+          if (remaining.length > 0) {
+            await env.OAUTH_KV.put(`ai_pending:${apiUser.id}`, String(remaining.length), {
+              expirationTtl: 30,
+            });
+          }
+          // Draft the first message immediately so it pops up right away
+          await draftOne(targetChats[0]);
+          // Stream remaining chats in the background while the user reads the first one
+          if (remaining.length > 0) {
+            ctx.waitUntil(
+              (async () => {
+                let left = remaining.length;
+                for (const nextChat of remaining) {
+                  await draftOne(nextChat);
+                  left -= 1;
+                  if (left > 0) {
+                    await env.OAUTH_KV.put(`ai_pending:${apiUser.id}`, String(left), { expirationTtl: 30 });
+                  } else {
+                    await env.OAUTH_KV.delete(`ai_pending:${apiUser.id}`);
                   }
                 }
-              } catch {
-                // Non-fatal
-              }
-            })()
-          );
+              })()
+            );
+          }
         }
       }
       return Response.json({
         ok: true,
         processed: true,
         ...stats,
+        ai_pending: aiPendingCount,
       });
     }
 
