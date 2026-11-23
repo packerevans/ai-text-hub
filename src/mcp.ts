@@ -254,6 +254,8 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
         const matches = await searchContactsWithPriority(env.DB, query, limit, userId);
         if (matches.length === 0) {
           await queueShortcutTask(env.DB, userId, "find_contact", query, Math.min(10, limit), 30);
+          const chatMatches = await readChatMessages(env.DB, query, 3, userId);
+          const matchingChats = [...new Set(chatMatches.map((m) => m.chat_title).filter(Boolean))];
           return {
             content: [
               {
@@ -261,8 +263,12 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
                 text: JSON.stringify(
                   {
                     matches: [],
+                    recent_chat_matches: matchingChats,
                     lookup_queued: true,
-                    note: `No matching contact in cache for "${query}". Queued a targeted iPhone contact lookup for the next time Messages opens (or pass a phone number directly to queue_text).`,
+                    note:
+                      matchingChats.length > 0
+                        ? `No phone number in synced contacts for "${query}", but found recent chat(s): ${matchingChats.join(", ")}. You can call queue_text with recipient="${matchingChats[0]}" (or ask the user for the phone number / suggest uploading Contacts.vcf on their dashboard).`
+                        : `No contact or recent chat found for "${query}". Ask the user for their phone number or suggest uploading Contacts.vcf on their dashboard (auto-sync only pulls the 10 most recent contacts).`,
                   },
                   null,
                   2
@@ -378,27 +384,31 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
         let resolvedRecipients = recipient.trim();
         let resolvedTitle = (chat_title || "").trim();
 
-        // If recipient looks like a name (no digits), resolve via known chats (with phone recipients) or contacts
+        // If recipient looks like a name (no digits), resolve via contacts first, then known chats
         if (!/\d{7,}/.test(resolvedRecipients)) {
-          const chatMatches = await readChatMessages(env.DB, resolvedRecipients, 1, userId);
-          if (chatMatches.length > 0 && chatMatches[0].recipients && /\d{7,}/.test(chatMatches[0].recipients)) {
-            resolvedRecipients = chatMatches[0].recipients;
-            resolvedTitle = resolvedTitle || chatMatches[0].chat_title;
+          const contactMatches = await searchContactsWithPriority(env.DB, resolvedRecipients, 1, userId);
+          if (contactMatches.length > 0) {
+            resolvedRecipients = contactMatches[0].phone;
+            resolvedTitle = resolvedTitle || contactMatches[0].name;
           } else {
-            const contactMatches = await searchContactsWithPriority(env.DB, resolvedRecipients, 1, userId);
-            if (contactMatches.length === 0) {
+            const chatMatches = await readChatMessages(env.DB, resolvedRecipients, 1, userId);
+            if (chatMatches.length > 0) {
+              resolvedRecipients =
+                chatMatches[0].recipients && /\d{7,}/.test(chatMatches[0].recipients)
+                  ? chatMatches[0].recipients
+                  : chatMatches[0].chat_title;
+              resolvedTitle = resolvedTitle || chatMatches[0].chat_title;
+            } else {
               await requestContactsSync(env.DB, userId);
               return {
                 content: [
                   {
                     type: "text",
-                    text: `Could not find contact or chat matching "${recipient}". Requested an automatic contact sync on next Messages open; you can also pass a phone number directly.`,
+                    text: `Could not find "${recipient}" in synced contacts or recent chats. Ask the user for their phone number (or suggest uploading Contacts.vcf on their dashboard so all contacts are searchable).`,
                   },
                 ],
               };
             }
-            resolvedRecipients = contactMatches[0].phone;
-            resolvedTitle = resolvedTitle || contactMatches[0].name;
           }
         }
 
