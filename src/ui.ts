@@ -158,20 +158,51 @@ export function renderSetupPage(error?: string): Response {
     `
     <div class="card">
       <span class="pill">First-Run Setup</span>
-      <h1>Create Your Master Password</h1>
+      <h1>Create Your Hub Account</h1>
       <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li>This Worker is 100% isolated inside your own Cloudflare account.</li>
-        <li>Your password locks this dashboard.</li>
-        <li>It also acts as your private OAuth 2.1 login for Claude, ChatGPT, or Grok.</li>
+        <li>This Worker runs inside your own Cloudflare account.</li>
+        <li>Your username and password lock this dashboard.</li>
+        <li>They also act as your OAuth 2.1 login for Claude, ChatGPT, or Grok.</li>
       </ul>
       ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form method="POST" action="/setup">
-        <label for="password">Master Password (min 10 characters)</label>
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" value="admin" minlength="2" maxlength="40" required autocomplete="username" />
+        <label for="password">Password (min 10 characters)</label>
         <input id="password" name="password" type="password" minlength="10" required autocomplete="new-password" />
         <label for="confirm">Confirm Password</label>
         <input id="confirm" name="confirm" type="password" minlength="10" required autocomplete="new-password" />
         <div style="margin-top:16px">
-          <button class="btn btn-primary" type="submit">Initialize My Private Hub</button>
+          <button class="btn btn-primary" type="submit">Initialize Hub</button>
+        </div>
+      </form>
+    </div>
+    `
+  );
+}
+
+export function renderSignupPage(error?: string): Response {
+  return layout(
+    "Create Account — AI Text Hub",
+    `
+    <div class="card" style="max-width:480px;margin:32px auto;">
+      <span class="pill">30-Second Setup</span>
+      <h1>Create Your Free Account</h1>
+      <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li>Pick a username and password.</li>
+        <li>You will immediately get your private Shortcut API Key and MCP URL.</li>
+      </ul>
+      ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
+      <form method="POST" action="/signup">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" minlength="2" maxlength="40" placeholder="e.g. alex" required autocomplete="username" />
+        <label for="password">Password (min 10 characters)</label>
+        <input id="password" name="password" type="password" minlength="10" required autocomplete="new-password" />
+        <label for="confirm">Confirm Password</label>
+        <input id="confirm" name="confirm" type="password" minlength="10" required autocomplete="new-password" />
+        <div class="row" style="margin-top:16px;justify-content:space-between;">
+          <button class="btn btn-primary" type="submit">Create Account</button>
+          <a href="/login" style="font-size:0.88rem;color:var(--accent);font-weight:700;text-decoration:none;">Already have an account? Sign In &rarr;</a>
         </div>
       </form>
     </div>
@@ -184,15 +215,18 @@ export function renderLoginPage(error?: string, nextUrl = "/dashboard"): Respons
     "Sign In — AI Text Hub",
     `
     <div class="card" style="max-width:460px;margin:48px auto;">
-      <h1>Unlock AI Text Hub</h1>
-      <p>Enter your master password to manage your Shortcut key, contacts, and connected AI clients.</p>
+      <h1>Sign In to AI Text Hub</h1>
+      <p>Enter your username and password to manage your Shortcut key, contacts, and connected AI clients.</p>
       ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form method="POST" action="/login">
         <input type="hidden" name="next" value="${esc(nextUrl)}" />
-        <label for="password">Master Password</label>
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" placeholder="admin or your username" required autocomplete="username" />
+        <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
-        <div style="margin-top:16px">
+        <div class="row" style="margin-top:16px;justify-content:space-between;">
           <button class="btn btn-primary" type="submit">Sign In</button>
+          <a href="/signup" style="font-size:0.88rem;color:var(--accent);font-weight:700;text-decoration:none;">New here? Create Account &rarr;</a>
         </div>
       </form>
     </div>
@@ -221,7 +255,9 @@ export function renderOAuthAuthorizePage(params: {
         <label style="font-weight:400"><input type="checkbox" name="scope" value="messages:read" checked /> Read recent chats (past 6 messages)</label>
         <label style="font-weight:400"><input type="checkbox" name="scope" value="contacts:read" checked /> Search synced contacts</label>
         <label style="font-weight:400"><input type="checkbox" name="scope" value="outbox:write" checked /> Queue outbound texts (respects allowlist &amp; hourly cap)</label>
-        <label for="password">Master Password</label>
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" placeholder="admin or your username" required autocomplete="username" />
+        <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
         <div class="row" style="margin-top:18px">
           <button class="btn btn-primary" type="submit">Approve Connection</button>
@@ -285,7 +321,7 @@ export function renderDashboardPage(params: {
     <div class="row" style="justify-content:space-between;margin-bottom:14px">
       <div>
         <h1>AI Text Hub</h1>
-        <p style="margin:0">Private self-hosted Worker &middot; ${params.contactCount} contacts &middot; ${params.chatCount} active chats &middot; ${params.pendingOutbox} queued</p>
+        <p style="margin:0">Account: <strong>${esc(params.config.username || "admin")}</strong> &middot; ${params.contactCount} contacts &middot; ${params.chatCount} active chats &middot; ${params.pendingOutbox} queued</p>
       </div>
       <form method="POST" action="/logout"><button class="btn" type="submit">Sign Out</button></form>
     </div>

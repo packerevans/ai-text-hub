@@ -8,6 +8,7 @@ export interface Env {
 
 export interface ConfigRow {
   id: number;
+  username?: string;
   password_hash: string;
   password_salt: string;
   session_secret: string;
@@ -66,6 +67,7 @@ export interface AllowlistRow {
 
 export interface OAuthUserProps {
   sub: string;
+  userId?: number;
   scopes: string[];
   clientLabel?: string;
 }

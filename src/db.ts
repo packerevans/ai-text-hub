@@ -1,10 +1,15 @@
-import { sha256Hex } from "./crypto";
+import { randomHex, sha256Hex } from "./crypto";
 import type { AllowlistRow, ConfigRow, ContactRow, MessageRow, OutboxRow } from "./types";
 
 const MAX_MESSAGES_PER_CHAT = 6;
 const OUTBOX_LEASE_MS = 90_000;
 
 let schemaReady = false;
+
+async function hasColumn(db: D1Database, table: string, col: string): Promise<boolean> {
+  const info = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  return (info.results || []).some((r) => r.name === col);
+}
 
 export async function ensureSchema(db: D1Database): Promise<void> {
   if (schemaReady) return;
@@ -23,28 +28,51 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       allowlist_only INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      session_secret TEXT NOT NULL,
+      api_key_hash TEXT NOT NULL,
+      api_key_prefix TEXT NOT NULL,
+      mcp_bearer_hash TEXT,
+      mcp_bearer_enabled INTEGER NOT NULL DEFAULT 0,
+      hourly_send_cap INTEGER NOT NULL DEFAULT 10,
+      require_approval_default INTEGER NOT NULL DEFAULT 0,
+      allowlist_only INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key_hash)`,
+    `CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS contacts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL DEFAULT 1,
       name TEXT NOT NULL,
       phone TEXT NOT NULL,
       normalized_phone TEXT NOT NULL,
       notes TEXT DEFAULT '',
       updated_at INTEGER NOT NULL,
-      UNIQUE(name, normalized_phone)
+      UNIQUE(user_id, name, normalized_phone)
     )`,
-    `CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name COLLATE NOCASE)`,
-    `CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(normalized_phone)`,
+    `CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(user_id, name COLLATE NOCASE)`,
+    `CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(user_id, normalized_phone)`,
     `CREATE TABLE IF NOT EXISTS allowlist (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL DEFAULT 1,
       target_type TEXT NOT NULL CHECK (target_type IN ('phone', 'chat')),
       target_value TEXT NOT NULL,
       label TEXT DEFAULT '',
       auto_send INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
-      UNIQUE(target_type, target_value)
+      UNIQUE(user_id, target_type, target_value)
     )`,
     `CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL DEFAULT 1,
       chat_key TEXT NOT NULL,
       chat_title TEXT NOT NULL,
       recipients TEXT NOT NULL,
@@ -55,12 +83,13 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       is_unread INTEGER NOT NULL DEFAULT 0,
       message_hash TEXT NOT NULL,
       created_at INTEGER NOT NULL,
-      UNIQUE(chat_key, message_hash)
+      UNIQUE(user_id, chat_key, message_hash)
     )`,
-    `CREATE INDEX IF NOT EXISTS idx_messages_chat_time ON messages(chat_key, sent_at DESC, id DESC)`,
-    `CREATE INDEX IF NOT EXISTS idx_messages_sent_at ON messages(sent_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_messages_chat_time ON messages(user_id, chat_key, sent_at DESC, id DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_messages_sent_at ON messages(user_id, sent_at DESC)`,
     `CREATE TABLE IF NOT EXISTS outbox (
       id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL DEFAULT 1,
       chat_title TEXT DEFAULT '',
       recipients TEXT NOT NULL,
       body TEXT NOT NULL,
@@ -69,16 +98,19 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       claimed_at INTEGER,
       created_at INTEGER NOT NULL
     )`,
-    `CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status, created_at ASC)`,
+    `CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(user_id, status, created_at ASC)`,
     `CREATE TABLE IF NOT EXISTS send_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL DEFAULT 1,
       sent_at INTEGER NOT NULL
     )`,
-    `CREATE INDEX IF NOT EXISTS idx_send_log_time ON send_log(sent_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_send_log_time ON send_log(user_id, sent_at)`,
     `CREATE TABLE IF NOT EXISTS user_preferences (
-      key TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL DEFAULT 1,
+      key TEXT NOT NULL,
       value TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, key)
     )`,
     `CREATE TABLE IF NOT EXISTS auth_rate_limits (
       ip TEXT PRIMARY KEY,
@@ -87,12 +119,168 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     )`,
   ];
   await db.batch(stmts.map((sql) => db.prepare(sql)));
+
+  // Migrate legacy single-user config row into users table if needed
+  const userCountRow = await db.prepare("SELECT COUNT(*) as c FROM users").first<{ c: number }>();
+  if ((userCountRow?.c ?? 0) === 0) {
+    const legacy = await db.prepare("SELECT * FROM config WHERE id = 1").first<ConfigRow>();
+    if (legacy) {
+      await db
+        .prepare(
+          `INSERT INTO users (id, username, password_hash, password_salt, session_secret, api_key_hash, api_key_prefix, mcp_bearer_hash, mcp_bearer_enabled, hourly_send_cap, require_approval_default, allowlist_only, created_at)
+           VALUES (1, 'admin', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          legacy.password_hash,
+          legacy.password_salt,
+          legacy.session_secret,
+          legacy.api_key_hash,
+          legacy.api_key_prefix,
+          legacy.mcp_bearer_hash,
+          legacy.mcp_bearer_enabled,
+          legacy.hourly_send_cap,
+          legacy.require_approval_default,
+          legacy.allowlist_only,
+          legacy.created_at
+        )
+        .run();
+    }
+  }
+
+  // Ensure legacy tables from single-user installs get user_id column & multi-user constraints
+  if (!(await hasColumn(db, "contacts", "user_id"))) {
+    await db.batch([
+      db.prepare(`CREATE TABLE contacts_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 1,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        normalized_phone TEXT NOT NULL,
+        notes TEXT DEFAULT '',
+        updated_at INTEGER NOT NULL,
+        UNIQUE(user_id, name, normalized_phone)
+      )`),
+      db.prepare(`INSERT INTO contacts_v2 (id, user_id, name, phone, normalized_phone, notes, updated_at)
+        SELECT id, 1, name, phone, normalized_phone, notes, updated_at FROM contacts`),
+      db.prepare(`DROP TABLE contacts`),
+      db.prepare(`ALTER TABLE contacts_v2 RENAME TO contacts`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(user_id, name COLLATE NOCASE)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(user_id, normalized_phone)`),
+    ]);
+  }
+  if (!(await hasColumn(db, "allowlist", "user_id"))) {
+    await db.batch([
+      db.prepare(`CREATE TABLE allowlist_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 1,
+        target_type TEXT NOT NULL CHECK (target_type IN ('phone', 'chat')),
+        target_value TEXT NOT NULL,
+        label TEXT DEFAULT '',
+        auto_send INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        UNIQUE(user_id, target_type, target_value)
+      )`),
+      db.prepare(`INSERT INTO allowlist_v2 (id, user_id, target_type, target_value, label, auto_send, created_at)
+        SELECT id, 1, target_type, target_value, label, auto_send, created_at FROM allowlist`),
+      db.prepare(`DROP TABLE allowlist`),
+      db.prepare(`ALTER TABLE allowlist_v2 RENAME TO allowlist`),
+    ]);
+  }
+  if (!(await hasColumn(db, "messages", "user_id"))) {
+    await db.batch([
+      db.prepare(`CREATE TABLE messages_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 1,
+        chat_key TEXT NOT NULL,
+        chat_title TEXT NOT NULL,
+        recipients TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        body TEXT NOT NULL,
+        sent_at INTEGER NOT NULL,
+        sent_at_label TEXT DEFAULT '',
+        is_unread INTEGER NOT NULL DEFAULT 0,
+        message_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE(user_id, chat_key, message_hash)
+      )`),
+      db.prepare(`INSERT INTO messages_v2 (id, user_id, chat_key, chat_title, recipients, sender, body, sent_at, sent_at_label, is_unread, message_hash, created_at)
+        SELECT id, 1, chat_key, chat_title, recipients, sender, body, sent_at, sent_at_label, is_unread, message_hash, created_at FROM messages`),
+      db.prepare(`DROP TABLE messages`),
+      db.prepare(`ALTER TABLE messages_v2 RENAME TO messages`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_messages_chat_time ON messages(user_id, chat_key, sent_at DESC, id DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_messages_sent_at ON messages(user_id, sent_at DESC)`),
+    ]);
+  }
+  if (!(await hasColumn(db, "outbox", "user_id"))) {
+    await db.prepare("ALTER TABLE outbox ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(user_id, status, created_at ASC)").run();
+  }
+  if (!(await hasColumn(db, "send_log", "user_id"))) {
+    await db.prepare("ALTER TABLE send_log ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_send_log_time ON send_log(user_id, sent_at)").run();
+  }
+  if (!(await hasColumn(db, "user_preferences", "user_id"))) {
+    await db.batch([
+      db.prepare(`CREATE TABLE user_preferences_v2 (
+        user_id INTEGER NOT NULL DEFAULT 1,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, key)
+      )`),
+      db.prepare(`INSERT INTO user_preferences_v2 (user_id, key, value, updated_at)
+        SELECT 1, key, value, updated_at FROM user_preferences`),
+      db.prepare(`DROP TABLE user_preferences`),
+      db.prepare(`ALTER TABLE user_preferences_v2 RENAME TO user_preferences`),
+    ]);
+  }
+
   schemaReady = true;
 }
 
-export async function getConfig(db: D1Database): Promise<ConfigRow | null> {
+export async function getAppSessionSecret(db: D1Database): Promise<string> {
   await ensureSchema(db);
-  return db.prepare("SELECT * FROM config WHERE id = 1").first<ConfigRow>();
+  const existing = await db
+    .prepare("SELECT value FROM app_meta WHERE key = 'app_session_secret'")
+    .first<{ value: string }>();
+  if (existing?.value) return existing.value;
+  const firstUser = await db.prepare("SELECT session_secret FROM users ORDER BY id ASC LIMIT 1").first<{ session_secret: string }>();
+  const secret = firstUser?.session_secret || randomHex(32);
+  await db
+    .prepare("INSERT OR IGNORE INTO app_meta (key, value) VALUES ('app_session_secret', ?)")
+    .bind(secret)
+    .run();
+  const row = await db.prepare("SELECT value FROM app_meta WHERE key = 'app_session_secret'").first<{ value: string }>();
+  return row?.value || secret;
+}
+
+export async function getUserCount(db: D1Database): Promise<number> {
+  await ensureSchema(db);
+  const row = await db.prepare("SELECT COUNT(*) as c FROM users").first<{ c: number }>();
+  return row?.c ?? 0;
+}
+
+export async function getConfig(db: D1Database, userId = 1): Promise<ConfigRow | null> {
+  await ensureSchema(db);
+  return db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first<ConfigRow>();
+}
+
+export async function getUserByUsername(db: D1Database, username: string): Promise<ConfigRow | null> {
+  await ensureSchema(db);
+  return db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").bind(username.trim()).first<ConfigRow>();
+}
+
+export async function getUserByApiKeyHash(db: D1Database, apiKeyHash: string): Promise<ConfigRow | null> {
+  await ensureSchema(db);
+  return db.prepare("SELECT * FROM users WHERE api_key_hash = ?").bind(apiKeyHash).first<ConfigRow>();
+}
+
+export async function getUserByMcpBearerHash(db: D1Database, bearerHash: string): Promise<ConfigRow | null> {
+  await ensureSchema(db);
+  return db
+    .prepare("SELECT * FROM users WHERE mcp_bearer_enabled = 1 AND mcp_bearer_hash = ?")
+    .bind(bearerHash)
+    .first<ConfigRow>();
 }
 
 export async function checkAuthRateLimit(
@@ -152,7 +340,8 @@ export function countChatParticipants(recipientsOrTitle: string): number {
 export async function resolveFriendlyChatTitle(
   db: D1Database,
   chatTitle: string,
-  recipients: string
+  recipients: string,
+  userId = 1
 ): Promise<string> {
   const title = chatTitle.trim();
   const hasLetters = /[a-zA-Z]/.test(title);
@@ -170,8 +359,8 @@ export async function resolveFriendlyChatTitle(
     const norm = normalizePhone(part);
     if (norm.length >= 7) {
       const row = await db
-        .prepare("SELECT name FROM contacts WHERE normalized_phone = ? LIMIT 1")
-        .bind(norm)
+        .prepare("SELECT name FROM contacts WHERE user_id = ? AND normalized_phone = ? LIMIT 1")
+        .bind(userId, norm)
         .first<{ name: string }>();
       resolved.push(row ? row.name : part);
     } else {
@@ -251,7 +440,8 @@ function parseTimestampMs(val?: string | number): number {
 
 export async function ingestMessages(
   db: D1Database,
-  items: IncomingMessageInput[]
+  items: IncomingMessageInput[],
+  userId = 1
 ): Promise<{ stored: number; duplicates: number; filtered_otp: number }> {
   await ensureSchema(db);
   const now = Date.now();
@@ -283,7 +473,7 @@ export async function ingestMessages(
       filteredOtp++;
       continue;
     }
-    const chatTitle = await resolveFriendlyChatTitle(db, rawChatTitle, recipients);
+    const chatTitle = await resolveFriendlyChatTitle(db, rawChatTitle, recipients, userId);
     const sentAt = parseTimestampMs(item.sent_at);
     const sentAtLabel = typeof item.sent_at === "string" ? item.sent_at.trim() : new Date(sentAt).toISOString();
     const chatKey = chatTitle.toLowerCase();
@@ -307,13 +497,14 @@ export async function ingestMessages(
 
   const insertStmt = db.prepare(
     `INSERT OR IGNORE INTO messages
-      (chat_key, chat_title, recipients, sender, body, sent_at, sent_at_label, is_unread, message_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (user_id, chat_key, chat_title, recipients, sender, body, sent_at, sent_at_label, is_unread, message_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   const results = await db.batch(
     validItems.map((m) =>
       insertStmt.bind(
+        userId,
         m.chatKey,
         m.chatTitle,
         m.recipients,
@@ -344,23 +535,23 @@ export async function ingestMessages(
   if (affectedChats.size > 0) {
     const pruneStmt = db.prepare(
       `DELETE FROM messages
-       WHERE chat_key = ?
+       WHERE user_id = ? AND chat_key = ?
          AND id NOT IN (
            SELECT id FROM messages
-           WHERE chat_key = ?
+           WHERE user_id = ? AND chat_key = ?
            ORDER BY sent_at DESC, id DESC
            LIMIT ?
          )`
     );
     await db.batch(
-      Array.from(affectedChats).map((ck) => pruneStmt.bind(ck, ck, MAX_MESSAGES_PER_CHAT))
+      Array.from(affectedChats).map((ck) => pruneStmt.bind(userId, ck, userId, ck, MAX_MESSAGES_PER_CHAT))
     );
   }
 
   return { stored, duplicates, filtered_otp: filteredOtp };
 }
 
-export async function claimPendingOutbox(db: D1Database, limit = 10): Promise<OutboxRow[]> {
+export async function claimPendingOutbox(db: D1Database, limit = 10, userId = 1): Promise<OutboxRow[]> {
   await ensureSchema(db);
   const now = Date.now();
   const leaseCutoff = now - OUTBOX_LEASE_MS;
@@ -369,39 +560,39 @@ export async function claimPendingOutbox(db: D1Database, limit = 10): Promise<Ou
   await db
     .prepare(
       `UPDATE outbox SET status = 'pending', claimed_at = NULL
-       WHERE status = 'claimed' AND claimed_at < ?`
+       WHERE user_id = ? AND status = 'claimed' AND claimed_at < ?`
     )
-    .bind(leaseCutoff)
+    .bind(userId, leaseCutoff)
     .run();
 
   const pending = await db
     .prepare(
-      `SELECT * FROM outbox WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?`
+      `SELECT * FROM outbox WHERE user_id = ? AND status = 'pending' ORDER BY created_at ASC LIMIT ?`
     )
-    .bind(limit)
+    .bind(userId, limit)
     .all<OutboxRow>();
 
   const rows = pending.results || [];
   if (rows.length === 0) return [];
 
   const claimStmt = db.prepare(
-    `UPDATE outbox SET status = 'claimed', claimed_at = ? WHERE id = ? AND status = 'pending'`
+    `UPDATE outbox SET status = 'claimed', claimed_at = ? WHERE id = ? AND user_id = ? AND status = 'pending'`
   );
-  const claimResults = await db.batch(rows.map((r) => claimStmt.bind(now, r.id)));
+  const claimResults = await db.batch(rows.map((r) => claimStmt.bind(now, r.id, userId)));
   return rows.filter((_, idx) => (claimResults[idx]?.meta?.changes ?? 0) > 0);
 }
 
-export async function ackOutboxItem(db: D1Database, id: string): Promise<boolean> {
+export async function ackOutboxItem(db: D1Database, id: string, userId = 1): Promise<boolean> {
   await ensureSchema(db);
-  const res = await db.prepare("DELETE FROM outbox WHERE id = ?").bind(id).run();
+  const res = await db.prepare("DELETE FROM outbox WHERE id = ? AND user_id = ?").bind(id, userId).run();
   return (res.meta?.changes ?? 0) > 0;
 }
 
-export async function releaseOutboxItem(db: D1Database, id: string): Promise<boolean> {
+export async function releaseOutboxItem(db: D1Database, id: string, userId = 1): Promise<boolean> {
   await ensureSchema(db);
   const res = await db
-    .prepare("UPDATE outbox SET status = 'pending', claimed_at = NULL WHERE id = ?")
-    .bind(id)
+    .prepare("UPDATE outbox SET status = 'pending', claimed_at = NULL WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
     .run();
   return (res.meta?.changes ?? 0) > 0;
 }
@@ -416,8 +607,8 @@ export async function queueOutboxItem(
   const oneHourAgo = now - 3_600_000;
 
   const sentCount = await db
-    .prepare("SELECT COUNT(*) as c FROM send_log WHERE sent_at > ?")
-    .bind(oneHourAgo)
+    .prepare("SELECT COUNT(*) as c FROM send_log WHERE user_id = ? AND sent_at > ?")
+    .bind(config.id, oneHourAgo)
     .first<{ c: number }>();
   if ((sentCount?.c ?? 0) >= config.hourly_send_cap) {
     return {
@@ -428,7 +619,7 @@ export async function queueOutboxItem(
 
   const normRecip = normalizePhone(params.recipients);
   const allowRows = (
-    await db.prepare("SELECT * FROM allowlist").all<AllowlistRow>()
+    await db.prepare("SELECT * FROM allowlist WHERE user_id = ?").bind(config.id).all<AllowlistRow>()
   ).results || [];
 
   const matchedAllow = allowRows.find((a) => {
@@ -454,12 +645,12 @@ export async function queueOutboxItem(
   await db.batch([
     db
       .prepare(
-        `INSERT INTO outbox (id, chat_title, recipients, body, require_approval, status, created_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?)`
+        `INSERT INTO outbox (id, user_id, chat_title, recipients, body, require_approval, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`
       )
-      .bind(id, params.chatTitle || "", params.recipients, params.body, requireApproval ? 1 : 0, now),
-    db.prepare("INSERT INTO send_log (sent_at) VALUES (?)").bind(now),
-    db.prepare("DELETE FROM send_log WHERE sent_at < ?").bind(now - 86_400_000),
+      .bind(id, config.id, params.chatTitle || "", params.recipients, params.body, requireApproval ? 1 : 0, now),
+    db.prepare("INSERT INTO send_log (user_id, sent_at) VALUES (?, ?)").bind(config.id, now),
+    db.prepare("DELETE FROM send_log WHERE user_id = ? AND sent_at < ?").bind(config.id, now - 86_400_000),
   ]);
 
   return { ok: true, id, require_approval: requireApproval };
@@ -495,29 +686,30 @@ export function parseVcf(vcfText: string): { name: string; phone: string; normal
 
 export async function importContacts(
   db: D1Database,
-  parsed: { name: string; phone: string; normalized: string }[]
+  parsed: { name: string; phone: string; normalized: string }[],
+  userId = 1
 ): Promise<number> {
   await ensureSchema(db);
   const now = Date.now();
   const stmt = db.prepare(
-    `INSERT INTO contacts (name, phone, normalized_phone, updated_at)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(name, normalized_phone) DO UPDATE SET phone = excluded.phone, updated_at = excluded.updated_at`
+    `INSERT INTO contacts (user_id, name, phone, normalized_phone, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, name, normalized_phone) DO UPDATE SET phone = excluded.phone, updated_at = excluded.updated_at`
   );
   // Batch in chunks of 100 for D1 limits
   let total = 0;
   for (let i = 0; i < parsed.length; i += 100) {
     const chunk = parsed.slice(i, i + 100);
-    await db.batch(chunk.map((c) => stmt.bind(c.name, c.phone, c.normalized, now)));
+    await db.batch(chunk.map((c) => stmt.bind(userId, c.name, c.phone, c.normalized, now)));
     total += chunk.length;
   }
   return total;
 }
 
-export async function getAllPreferences(db: D1Database): Promise<Record<string, string>> {
+export async function getAllPreferences(db: D1Database, userId = 1): Promise<Record<string, string>> {
   await ensureSchema(db);
   const rows = (
-    await db.prepare("SELECT key, value FROM user_preferences").all<{ key: string; value: string }>()
+    await db.prepare("SELECT key, value FROM user_preferences WHERE user_id = ?").bind(userId).all<{ key: string; value: string }>()
   ).results || [];
   const out: Record<string, string> = {};
   for (const r of rows) out[r.key] = r.value;
@@ -527,11 +719,12 @@ export async function getAllPreferences(db: D1Database): Promise<Record<string, 
 export async function searchContactsWithPriority(
   db: D1Database,
   query: string,
-  limit = 10
+  limit = 10,
+  userId = 1
 ): Promise<ContactRow[]> {
   await ensureSchema(db);
   const q = query.trim().toLowerCase();
-  const prefs = await getAllPreferences(db);
+  const prefs = await getAllPreferences(db, userId);
   const priorityLastNames = (prefs["family_last_names"] || prefs["name_priorities"] || "")
     .split(/[,\n]+/)
     .map((s) => s.trim().toLowerCase())
@@ -542,10 +735,10 @@ export async function searchContactsWithPriority(
     await db
       .prepare(
         `SELECT * FROM contacts
-         WHERE LOWER(name) LIKE ? OR normalized_phone LIKE ?
+         WHERE user_id = ? AND (LOWER(name) LIKE ? OR normalized_phone LIKE ?)
          LIMIT 50`
       )
-      .bind(like, like)
+      .bind(userId, like, like)
       .all<ContactRow>()
   ).results || [];
 
@@ -568,7 +761,7 @@ export async function searchContactsWithPriority(
   return rows.slice(0, limit);
 }
 
-export async function listChats(db: D1Database, limit = 25): Promise<
+export async function listChats(db: D1Database, limit = 25, userId = 1): Promise<
   { chat_title: string; recipients: string; message_count: number; unread_count: number; last_sent_at: number; last_body: string }[]
 > {
   await ensureSchema(db);
@@ -580,13 +773,14 @@ export async function listChats(db: D1Database, limit = 25): Promise<
          COUNT(*) as message_count,
          SUM(m.is_unread) as unread_count,
          MAX(m.sent_at) as last_sent_at,
-         (SELECT m2.body FROM messages m2 WHERE m2.chat_key = m.chat_key ORDER BY m2.sent_at DESC, m2.id DESC LIMIT 1) as last_body
+         (SELECT m2.body FROM messages m2 WHERE m2.user_id = m.user_id AND m2.chat_key = m.chat_key ORDER BY m2.sent_at DESC, m2.id DESC LIMIT 1) as last_body
        FROM messages m
+       WHERE m.user_id = ?
        GROUP BY m.chat_key
        ORDER BY last_sent_at DESC
        LIMIT ?`
     )
-    .bind(limit)
+    .bind(userId, limit)
     .all<{
       chat_title: string;
       recipients: string;
@@ -601,24 +795,25 @@ export async function listChats(db: D1Database, limit = 25): Promise<
 export async function readChatMessages(
   db: D1Database,
   chatTitleQuery: string,
-  limit = MAX_MESSAGES_PER_CHAT
+  limit = MAX_MESSAGES_PER_CHAT,
+  userId = 1
 ): Promise<MessageRow[]> {
   await ensureSchema(db);
   const cap = Math.min(Math.max(1, limit), MAX_MESSAGES_PER_CHAT);
   const q = chatTitleQuery.trim().toLowerCase();
   const exact = await db
     .prepare(
-      `SELECT * FROM messages WHERE chat_key = ? ORDER BY sent_at DESC, id DESC LIMIT ?`
+      `SELECT * FROM messages WHERE user_id = ? AND chat_key = ? ORDER BY sent_at DESC, id DESC LIMIT ?`
     )
-    .bind(q, cap)
+    .bind(userId, q, cap)
     .all<MessageRow>();
   if (exact.results && exact.results.length > 0) return exact.results.reverse();
 
   const fuzzy = await db
     .prepare(
-      `SELECT * FROM messages WHERE chat_key LIKE ? OR recipients LIKE ? ORDER BY sent_at DESC, id DESC LIMIT ?`
+      `SELECT * FROM messages WHERE user_id = ? AND (chat_key LIKE ? OR recipients LIKE ?) ORDER BY sent_at DESC, id DESC LIMIT ?`
     )
-    .bind(`%${q}%`, `%${q}%`, cap)
+    .bind(userId, `%${q}%`, `%${q}%`, cap)
     .all<MessageRow>();
   return (fuzzy.results || []).reverse();
 }

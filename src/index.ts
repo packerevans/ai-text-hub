@@ -5,11 +5,10 @@ import {
   createSessionCookie,
   extractBearerOrApiKey,
   generateApiKey,
+  getSessionUserId,
   hashPassword,
-  isSessionValid,
   randomHex,
   sha256Hex,
-  timingSafeEqualStr,
   verifyCsrfToken,
   verifyPassword,
 } from "./crypto";
@@ -18,7 +17,12 @@ import {
   checkAuthRateLimit,
   claimPendingOutbox,
   ensureSchema,
+  getAppSessionSecret,
   getConfig,
+  getUserByApiKeyHash,
+  getUserByMcpBearerHash,
+  getUserByUsername,
+  getUserCount,
   importContacts,
   ingestMessages,
   parseCustomDelimitedMessages,
@@ -28,34 +32,35 @@ import {
   type IncomingMessageInput,
 } from "./db";
 import { handleMcpRequest } from "./mcp";
-import type { AllowlistRow, Env, OAuthUserProps } from "./types";
+import type { AllowlistRow, ConfigRow, Env, OAuthUserProps } from "./types";
 import {
   renderDashboardPage,
   renderLoginPage,
   renderOAuthAuthorizePage,
   renderSetupPage,
+  renderSignupPage,
 } from "./ui";
 
 function getClientIp(request: Request): string {
   return request.headers.get("CF-Connecting-IP") || "local";
 }
 
-async function verifyShortcutApiKey(request: Request, env: Env): Promise<boolean> {
-  const config = await getConfig(env.DB);
-  if (!config) return false;
-  const presented = extractBearerOrApiKey(request);
-  if (!presented) return false;
-  const hash = await sha256Hex(presented);
-  return timingSafeEqualStr(hash, config.api_key_hash);
+function oauthUserKey(userId: number): string {
+  return userId === 1 ? "owner" : String(userId);
 }
 
-async function verifyMcpBearerFallback(request: Request, env: Env): Promise<boolean> {
-  const config = await getConfig(env.DB);
-  if (!config || !config.mcp_bearer_enabled || !config.mcp_bearer_hash) return false;
+async function verifyShortcutApiKey(request: Request, env: Env): Promise<ConfigRow | null> {
   const presented = extractBearerOrApiKey(request);
-  if (!presented) return false;
+  if (!presented) return null;
   const hash = await sha256Hex(presented);
-  return timingSafeEqualStr(hash, config.mcp_bearer_hash);
+  return getUserByApiKeyHash(env.DB, hash);
+}
+
+async function verifyMcpBearerFallback(request: Request, env: Env): Promise<ConfigRow | null> {
+  const presented = extractBearerOrApiKey(request);
+  if (!presented) return null;
+  const hash = await sha256Hex(presented);
+  return getUserByMcpBearerHash(env.DB, hash);
 }
 
 const defaultHandler = {
@@ -67,10 +72,11 @@ const defaultHandler = {
 
     // ── 1. iOS Shortcut API Endpoints (Header API-Key Auth, 100% separate from OAuth) ──
     if (path === "/api/outbox" && method === "GET") {
-      if (!(await verifyShortcutApiKey(request, env))) {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const items = await claimPendingOutbox(env.DB, 10);
+      const items = await claimPendingOutbox(env.DB, 10, apiUser.id);
       return Response.json({
         count: items.length,
         items: items.map((i) => ({
@@ -85,50 +91,59 @@ const defaultHandler = {
 
     const ackMatch = path.match(/^\/api\/outbox\/([a-zA-Z0-9_-]+)\/ack$/);
     if (ackMatch && method === "POST") {
-      if (!(await verifyShortcutApiKey(request, env))) {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const deleted = await ackOutboxItem(env.DB, ackMatch[1]);
+      const deleted = await ackOutboxItem(env.DB, ackMatch[1], apiUser.id);
       return Response.json({ ok: true, acked: deleted });
     }
 
     const releaseMatch = path.match(/^\/api\/outbox\/([a-zA-Z0-9_-]+)\/release$/);
     if (releaseMatch && method === "POST") {
-      if (!(await verifyShortcutApiKey(request, env))) {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const released = await releaseOutboxItem(env.DB, releaseMatch[1]);
+      const released = await releaseOutboxItem(env.DB, releaseMatch[1], apiUser.id);
       return Response.json({ ok: true, released });
     }
 
     if (path === "/api/ai-status" && method === "GET") {
-      if (!(await verifyShortcutApiKey(request, env))) {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const row = await env.DB.prepare("SELECT value FROM user_preferences WHERE key = 'ai_listening_until'").first<{ value: string }>();
+      const row = await env.DB.prepare(
+        "SELECT value FROM user_preferences WHERE user_id = ? AND key = 'ai_listening_until'"
+      )
+        .bind(apiUser.id)
+        .first<{ value: string }>();
       const until = row ? parseInt(row.value, 10) || 0 : 0;
       return Response.json({ ok: true, listening: until > Date.now() ? 1 : 0 });
     }
 
     if (path === "/api/ai-status" && method === "POST") {
-      if (!(await verifyShortcutApiKey(request, env)) && !(await verifyMcpBearerFallback(request, env))) {
+      const apiUser = (await verifyShortcutApiKey(request, env)) || (await verifyMcpBearerFallback(request, env));
+      if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
       const body = (await request.json().catch(() => ({}))) as { listening?: boolean; ttl_seconds?: number };
       const ttlMs = Math.min(45, Math.max(2, Number(body.ttl_seconds) || 20)) * 1000;
       const until = body.listening ? Date.now() + ttlMs : 0;
       await env.DB.prepare(
-        `INSERT INTO user_preferences (key, value, updated_at)
-         VALUES ('ai_listening_until', ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        `INSERT INTO user_preferences (user_id, key, value, updated_at)
+         VALUES (?, 'ai_listening_until', ?, ?)
+         ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
       )
-        .bind(String(until), Date.now())
+        .bind(apiUser.id, String(until), Date.now())
         .run();
       return Response.json({ ok: true, listening: until > Date.now() ? 1 : 0 });
     }
 
     if (path === "/api/contacts/sync" && method === "POST") {
-      if (!(await verifyShortcutApiKey(request, env))) {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
       const ct = (request.headers.get("Content-Type") || "").toLowerCase();
@@ -152,12 +167,13 @@ const defaultHandler = {
         const vcfText = await request.text();
         parsed = parseVcf(vcfText);
       }
-      const imported = await importContacts(env.DB, parsed);
+      const imported = await importContacts(env.DB, parsed, apiUser.id);
       return Response.json({ ok: true, imported });
     }
 
     if (path === "/api/messages" && method === "POST") {
-      if (!(await verifyShortcutApiKey(request, env))) {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
       const ct = (request.headers.get("Content-Type") || "").toLowerCase();
@@ -176,21 +192,27 @@ const defaultHandler = {
         const raw = await request.text();
         items = parseCustomDelimitedMessages(raw);
       }
-      const stats = await ingestMessages(env.DB, items);
+      const stats = await ingestMessages(env.DB, items, apiUser.id);
       return Response.json({ ok: true, processed: true, ...stats });
     }
 
+    const appSecret = await getAppSessionSecret(env.DB);
+    const totalUsers = await getUserCount(env.DB);
+
     // ── 2. First-Run Setup (/setup) ──
-    const config = await getConfig(env.DB);
-    if (!config) {
+    if (totalUsers === 0) {
       if (path === "/setup" && method === "POST") {
         const ip = getClientIp(request);
         if (!(await checkAuthRateLimit(env.DB, ip))) {
           return renderSetupPage("Too many attempts. Try again in 15 minutes.");
         }
         const form = await request.formData();
+        const username = String(form.get("username") || "admin").trim().toLowerCase();
         const password = String(form.get("password") || "");
         const confirm = String(form.get("confirm") || "");
+        if (!/^[a-z0-9._-]{2,40}$/.test(username)) {
+          return renderSetupPage("Username must be 2–40 letters, numbers, dots, dashes, or underscores.");
+        }
         if (password.length < 10) return renderSetupPage("Password must be at least 10 characters.");
         if (password !== confirm) return renderSetupPage("Passwords do not match.");
 
@@ -199,27 +221,18 @@ const defaultHandler = {
         const { key: apiKey, prefixDisplay } = generateApiKey("ath");
         const apiKeyHash = await sha256Hex(apiKey);
 
-        await env.DB.prepare(
-          `INSERT INTO config
-            (id, password_hash, password_salt, session_secret, api_key_hash, api_key_prefix, created_at)
-           VALUES (1, ?, ?, ?, ?, ?, ?)`
+        const ins = await env.DB.prepare(
+          `INSERT INTO users
+            (username, password_hash, password_salt, session_secret, api_key_hash, api_key_prefix, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
         )
-          .bind(pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, Date.now())
+          .bind(username, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, Date.now())
           .run();
 
+        const newId = Number(ins.meta?.last_row_id || 1);
         await resetAuthRateLimit(env.DB, ip);
-        const cookie = await createSessionCookie(sessionSecret);
-        const newConfig = (await getConfig(env.DB))!;
-        const csrfToken = await createCsrfToken(sessionSecret);
-        const resp = renderDashboardPage({
-          origin: url.origin,
-          config: newConfig,
-          csrfToken,
-          contactCount: 0,
-          chatCount: 0,
-          pendingOutbox: 0,
-          allowlist: [],
-          grants: [],
+        const cookie = await createSessionCookie(appSecret, newId);
+        const resp = await renderDashboardFromState(env, url.origin, newId, appSecret, {
           freshApiKey: apiKey,
           notice: "Hub initialized! Save your Shortcut API Key below before leaving this page.",
         });
@@ -232,7 +245,55 @@ const defaultHandler = {
       return Response.redirect(`${url.origin}/setup`, 302);
     }
 
-    // ── 3. Login / Logout ──
+    // ── 3. Sign Up / Login / Logout ──
+    if (path === "/signup" && method === "GET") {
+      return renderSignupPage();
+    }
+
+    if (path === "/signup" && method === "POST") {
+      const ip = getClientIp(request);
+      if (!(await checkAuthRateLimit(env.DB, ip))) {
+        return renderSignupPage("Too many attempts. Try again in 15 minutes.");
+      }
+      const form = await request.formData();
+      const username = String(form.get("username") || "").trim().toLowerCase();
+      const password = String(form.get("password") || "");
+      const confirm = String(form.get("confirm") || "");
+      if (!/^[a-z0-9._-]{2,40}$/.test(username)) {
+        return renderSignupPage("Username must be 2–40 letters, numbers, dots, dashes, or underscores.");
+      }
+      if (password.length < 10) return renderSignupPage("Password must be at least 10 characters.");
+      if (password !== confirm) return renderSignupPage("Passwords do not match.");
+
+      const existing = await getUserByUsername(env.DB, username);
+      if (existing) {
+        return renderSignupPage("That username is already taken. Try another or Sign In.");
+      }
+
+      const { hash: pwHash, salt: pwSalt } = await hashPassword(password);
+      const sessionSecret = randomHex(32);
+      const { key: apiKey, prefixDisplay } = generateApiKey("ath");
+      const apiKeyHash = await sha256Hex(apiKey);
+
+      const ins = await env.DB.prepare(
+        `INSERT INTO users
+          (username, password_hash, password_salt, session_secret, api_key_hash, api_key_prefix, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(username, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, Date.now())
+        .run();
+
+      const newId = Number(ins.meta?.last_row_id || 1);
+      await resetAuthRateLimit(env.DB, ip);
+      const cookie = await createSessionCookie(appSecret, newId);
+      const resp = await renderDashboardFromState(env, url.origin, newId, appSecret, {
+        freshApiKey: apiKey,
+        notice: "Account created! Save your Shortcut API Key below before leaving this page.",
+      });
+      resp.headers.set("Set-Cookie", cookie);
+      return resp;
+    }
+
     if (path === "/login" && method === "GET") {
       return renderLoginPage(undefined, url.searchParams.get("next") || "/dashboard");
     }
@@ -243,15 +304,17 @@ const defaultHandler = {
         return renderLoginPage("Too many failed attempts. Wait 15 minutes.");
       }
       const form = await request.formData();
+      const username = String(form.get("username") || "").trim().toLowerCase();
       const password = String(form.get("password") || "");
       const next = String(form.get("next") || "/dashboard");
       const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
 
-      if (!(await verifyPassword(password, config.password_hash, config.password_salt))) {
-        return renderLoginPage("Incorrect password.", safeNext);
+      const user = await getUserByUsername(env.DB, username);
+      if (!user || !(await verifyPassword(password, user.password_hash, user.password_salt))) {
+        return renderLoginPage("Incorrect username or password.", safeNext);
       }
       await resetAuthRateLimit(env.DB, ip);
-      const cookie = await createSessionCookie(config.session_secret);
+      const cookie = await createSessionCookie(appSecret, user.id);
       return new Response(null, {
         status: 302,
         headers: { Location: safeNext, "Set-Cookie": cookie },
@@ -272,7 +335,7 @@ const defaultHandler = {
         return new Response("Invalid OAuth request", { status: 400 });
       }
       const clientInfo = await env.OAUTH_PROVIDER.lookupClient(oauthReq.clientId);
-      const csrfToken = await createCsrfToken(config.session_secret);
+      const csrfToken = await createCsrfToken(appSecret);
       const authNonce = randomHex(16);
       await env.OAUTH_KV.put(`auth_req:${authNonce}`, JSON.stringify(oauthReq), {
         expirationTtl: 600,
@@ -289,6 +352,7 @@ const defaultHandler = {
       const form = await request.formData();
       const csrf = String(form.get("csrf") || "");
       const authNonce = String(form.get("auth_nonce") || "");
+      const username = String(form.get("username") || "").trim().toLowerCase();
       const password = String(form.get("password") || "");
       const scopes = form.getAll("scope").map(String).filter(Boolean);
 
@@ -303,10 +367,10 @@ const defaultHandler = {
       const clientInfo = await env.OAUTH_PROVIDER.lookupClient(oauthReq.clientId);
       const clientName = clientInfo?.clientName || oauthReq.clientId;
 
-      if (!(await verifyCsrfToken(csrf, config.session_secret))) {
+      if (!(await verifyCsrfToken(csrf, appSecret))) {
         return renderOAuthAuthorizePage({
           clientName,
-          csrfToken: await createCsrfToken(config.session_secret),
+          csrfToken: await createCsrfToken(appSecret),
           authNonce,
           error: "Session expired. Please try again.",
         });
@@ -314,53 +378,70 @@ const defaultHandler = {
       if (!(await checkAuthRateLimit(env.DB, ip))) {
         return renderOAuthAuthorizePage({
           clientName,
-          csrfToken: await createCsrfToken(config.session_secret),
+          csrfToken: await createCsrfToken(appSecret),
           authNonce,
           error: "Too many failed attempts. Wait 15 minutes.",
         });
       }
-      if (!(await verifyPassword(password, config.password_hash, config.password_salt))) {
+      const user = await getUserByUsername(env.DB, username);
+      if (!user || !(await verifyPassword(password, user.password_hash, user.password_salt))) {
         return renderOAuthAuthorizePage({
           clientName,
-          csrfToken: await createCsrfToken(config.session_secret),
+          csrfToken: await createCsrfToken(appSecret),
           authNonce,
-          error: "Incorrect Master Password.",
+          error: "Incorrect username or password.",
         });
       }
 
       await env.OAUTH_KV.delete(`auth_req:${authNonce}`);
       await resetAuthRateLimit(env.DB, ip);
       const finalScopes = scopes.length > 0 ? scopes : ["messages:read", "contacts:read"];
+      const userKey = oauthUserKey(user.id);
       const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
         request: oauthReq,
-        userId: "owner",
+        userId: userKey,
         metadata: { label: clientName },
         scope: finalScopes,
-        props: { sub: "owner", scopes: finalScopes, clientLabel: clientName } satisfies OAuthUserProps,
+        props: {
+          sub: user.username || userKey,
+          userId: user.id,
+          scopes: finalScopes,
+          clientLabel: clientName,
+        } satisfies OAuthUserProps,
       });
       return Response.redirect(redirectTo, 302);
     }
 
     // ── 5. Authenticated Dashboard & Management Routes ──
-    const authed = await isSessionValid(request, config.session_secret);
-    if (!authed) {
+    const sessionUserId = await getSessionUserId(request, appSecret);
+    if (!sessionUserId) {
+      if (path === "/") {
+        return Response.redirect(`${url.origin}/signup`, 302);
+      }
       return Response.redirect(`${url.origin}/login?next=${encodeURIComponent(path)}`, 302);
+    }
+    const activeUser = await getConfig(env.DB, sessionUserId);
+    if (!activeUser) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "/login", "Set-Cookie": clearSessionCookie() },
+      });
     }
 
     if (path === "/api/contacts/upload" && method === "POST") {
       const csrf = request.headers.get("X-CSRF-Token") || "";
-      if (!(await verifyCsrfToken(csrf, config.session_secret))) {
+      if (!(await verifyCsrfToken(csrf, appSecret))) {
         return Response.json({ ok: false, error: "Invalid CSRF token" }, { status: 403 });
       }
       const vcfText = await request.text();
       const parsed = parseVcf(vcfText);
-      const imported = await importContacts(env.DB, parsed);
+      const imported = await importContacts(env.DB, parsed, activeUser.id);
       return Response.json({ ok: true, imported });
     }
 
     if (path === "/api/contacts/add" && method === "POST") {
       const form = await request.formData();
-      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const name = String(form.get("name") || "").trim();
@@ -368,27 +449,27 @@ const defaultHandler = {
       const digits = phone.replace(/\D/g, "");
       const normalized = digits.length >= 10 ? digits.slice(-10) : digits;
       if (!name || normalized.length < 7) {
-        return renderDashboardFromState(env, url.origin, {
+        return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
           notice: "Please enter both a contact name and a valid phone number.",
         });
       }
-      await importContacts(env.DB, [{ name, phone, normalized }]);
-      return renderDashboardFromState(env, url.origin, {
+      await importContacts(env.DB, [{ name, phone, normalized }], activeUser.id);
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
         notice: `Saved contact "${name}" (${phone}).`,
       });
     }
 
     if (path === "/api/rotate-key" && method === "POST") {
       const form = await request.formData();
-      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const { key, prefixDisplay } = generateApiKey("ath");
       const hash = await sha256Hex(key);
-      await env.DB.prepare("UPDATE config SET api_key_hash = ?, api_key_prefix = ? WHERE id = 1")
-        .bind(hash, prefixDisplay)
+      await env.DB.prepare("UPDATE users SET api_key_hash = ?, api_key_prefix = ? WHERE id = ?")
+        .bind(hash, prefixDisplay, activeUser.id)
         .run();
-      return renderDashboardFromState(env, url.origin, {
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
         freshApiKey: key,
         notice: "Shortcut API Key rotated. Update your iPhone Shortcut with the new key below.",
       });
@@ -396,20 +477,22 @@ const defaultHandler = {
 
     if (path === "/api/mcp-bearer" && method === "POST") {
       const form = await request.formData();
-      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const action = String(form.get("action") || "");
       if (action === "disable") {
-        await env.DB.prepare("UPDATE config SET mcp_bearer_enabled = 0, mcp_bearer_hash = NULL WHERE id = 1").run();
+        await env.DB.prepare("UPDATE users SET mcp_bearer_enabled = 0, mcp_bearer_hash = NULL WHERE id = ?")
+          .bind(activeUser.id)
+          .run();
         return Response.redirect(`${url.origin}/dashboard`, 302);
       }
       const { key } = generateApiKey("ath_mcp");
       const hash = await sha256Hex(key);
-      await env.DB.prepare("UPDATE config SET mcp_bearer_enabled = 1, mcp_bearer_hash = ? WHERE id = 1")
-        .bind(hash)
+      await env.DB.prepare("UPDATE users SET mcp_bearer_enabled = 1, mcp_bearer_hash = ? WHERE id = ?")
+        .bind(hash, activeUser.id)
         .run();
-      return renderDashboardFromState(env, url.origin, {
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
         freshMcpBearer: key,
         notice: "Static MCP Bearer token enabled for CLI / Grok API clients.",
       });
@@ -417,23 +500,23 @@ const defaultHandler = {
 
     if (path === "/api/settings" && method === "POST") {
       const form = await request.formData();
-      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const cap = Math.min(100, Math.max(1, parseInt(String(form.get("hourly_send_cap") || "10"), 10) || 10));
       const allowOnly = form.get("allowlist_only") === "1" ? 1 : 0;
       const reqApp = form.get("require_approval_default") === "1" ? 1 : 0;
       await env.DB.prepare(
-        "UPDATE config SET hourly_send_cap = ?, allowlist_only = ?, require_approval_default = ? WHERE id = 1"
+        "UPDATE users SET hourly_send_cap = ?, allowlist_only = ?, require_approval_default = ? WHERE id = ?"
       )
-        .bind(cap, allowOnly, reqApp)
+        .bind(cap, allowOnly, reqApp, activeUser.id)
         .run();
       return Response.redirect(`${url.origin}/dashboard`, 302);
     }
 
     if (path === "/api/allowlist/add" && method === "POST") {
       const form = await request.formData();
-      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const targetType = form.get("target_type") === "chat" ? "chat" : "phone";
@@ -441,10 +524,10 @@ const defaultHandler = {
       const label = String(form.get("label") || "").trim();
       if (targetValue) {
         await env.DB.prepare(
-          `INSERT OR IGNORE INTO allowlist (target_type, target_value, label, auto_send, created_at)
-           VALUES (?, ?, ?, 1, ?)`
+          `INSERT OR IGNORE INTO allowlist (user_id, target_type, target_value, label, auto_send, created_at)
+           VALUES (?, ?, ?, ?, 1, ?)`
         )
-          .bind(targetType, targetValue, label, Date.now())
+          .bind(activeUser.id, targetType, targetValue, label, Date.now())
           .run();
       }
       return Response.redirect(`${url.origin}/dashboard`, 302);
@@ -452,26 +535,30 @@ const defaultHandler = {
 
     if (path === "/api/allowlist/delete" && method === "POST") {
       const form = await request.formData();
-      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const id = parseInt(String(form.get("id") || "0"), 10);
-      if (id > 0) await env.DB.prepare("DELETE FROM allowlist WHERE id = ?").bind(id).run();
+      if (id > 0) {
+        await env.DB.prepare("DELETE FROM allowlist WHERE id = ? AND user_id = ?")
+          .bind(id, activeUser.id)
+          .run();
+      }
       return Response.redirect(`${url.origin}/dashboard`, 302);
     }
 
     if (path === "/api/clients/revoke" && method === "POST") {
       const form = await request.formData();
-      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const grantId = String(form.get("grantId") || "");
-      if (grantId) await env.OAUTH_PROVIDER.revokeGrant(grantId, "owner");
+      if (grantId) await env.OAUTH_PROVIDER.revokeGrant(grantId, oauthUserKey(activeUser.id));
       return Response.redirect(`${url.origin}/dashboard`, 302);
     }
 
     if (path === "/" || path === "/dashboard") {
-      return renderDashboardFromState(env, url.origin);
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret);
     }
 
     return new Response("Not Found", { status: 404 });
@@ -481,16 +568,18 @@ const defaultHandler = {
 async function renderDashboardFromState(
   env: Env,
   origin: string,
+  userId: number,
+  appSecret: string,
   extra?: { freshApiKey?: string; freshMcpBearer?: string; notice?: string }
 ): Promise<Response> {
-  const config = (await getConfig(env.DB))!;
+  const config = (await getConfig(env.DB, userId))!;
   const [contacts, chats, outbox, allowlistRes, grantsRes, csrfToken] = await Promise.all([
-    env.DB.prepare("SELECT COUNT(*) as c FROM contacts").first<{ c: number }>(),
-    env.DB.prepare("SELECT COUNT(DISTINCT chat_key) as c FROM messages").first<{ c: number }>(),
-    env.DB.prepare("SELECT COUNT(*) as c FROM outbox").first<{ c: number }>(),
-    env.DB.prepare("SELECT * FROM allowlist ORDER BY created_at DESC").all<AllowlistRow>(),
-    env.OAUTH_PROVIDER.listUserGrants("owner"),
-    createCsrfToken(config.session_secret),
+    env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>(),
+    env.DB.prepare("SELECT COUNT(DISTINCT chat_key) as c FROM messages WHERE user_id = ?").bind(userId).first<{ c: number }>(),
+    env.DB.prepare("SELECT COUNT(*) as c FROM outbox WHERE user_id = ?").bind(userId).first<{ c: number }>(),
+    env.DB.prepare("SELECT * FROM allowlist WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all<AllowlistRow>(),
+    env.OAUTH_PROVIDER.listUserGrants(oauthUserKey(userId)),
+    createCsrfToken(appSecret),
   ]);
 
   return renderDashboardPage({
@@ -522,7 +611,8 @@ function getOAuthProvider(origin: string): OAuthProvider<Env> {
         async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
           const props = (ctx as unknown as { props?: OAuthUserProps }).props;
           const scopes = props?.scopes || ["messages:read", "contacts:read", "outbox:write"];
-          return handleMcpRequest(request, env, ctx, scopes);
+          const userId = props?.userId ?? 1;
+          return handleMcpRequest(request, env, ctx, scopes, userId);
         },
       },
       defaultHandler,
@@ -543,8 +633,11 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     // Optional dual-auth fallback: allow static MCP Bearer token on /mcp if explicitly enabled in dashboard
-    if (url.pathname === "/mcp" && (await verifyMcpBearerFallback(request, env))) {
-      return handleMcpRequest(request, env, ctx, ["*"]);
+    if (url.pathname === "/mcp") {
+      const bearerUser = await verifyMcpBearerFallback(request, env);
+      if (bearerUser) {
+        return handleMcpRequest(request, env, ctx, ["*"], bearerUser.id);
+      }
     }
     // Serve RFC 9728 protected-resource metadata at both root and /mcp suffix for maximum MCP client compatibility
     if (url.pathname === "/.well-known/oauth-protected-resource") {

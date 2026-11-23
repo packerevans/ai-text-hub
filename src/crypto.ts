@@ -96,10 +96,11 @@ export async function verifySignedToken(
 
 export async function createSessionCookie(
   secretHex: string,
+  userId = 1,
   maxAgeSec = 60 * 60 * 24 * 7
 ): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + maxAgeSec;
-  const signed = await signToken(`owner:${exp}`, secretHex);
+  const signed = await signToken(`user:${userId}:${exp}`, secretHex);
   return `ath_session=${signed}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAgeSec}`;
 }
 
@@ -116,13 +117,30 @@ export function getCookie(request: Request, name: string): string | null {
   return null;
 }
 
-export async function isSessionValid(request: Request, secretHex: string): Promise<boolean> {
+export async function getSessionUserId(request: Request, secretHex: string): Promise<number | null> {
   const raw = getCookie(request, "ath_session");
-  if (!raw) return false;
+  if (!raw) return null;
   const payload = await verifySignedToken(raw, secretHex);
-  if (!payload || !payload.startsWith("owner:")) return false;
-  const exp = parseInt(payload.slice(6), 10);
-  return Number.isFinite(exp) && exp > Math.floor(Date.now() / 1000);
+  if (!payload) return null;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (payload.startsWith("user:")) {
+    const parts = payload.split(":");
+    const uid = parseInt(parts[1] || "0", 10);
+    const exp = parseInt(parts[2] || "0", 10);
+    if (Number.isFinite(uid) && uid > 0 && Number.isFinite(exp) && exp > nowSec) {
+      return uid;
+    }
+    return null;
+  }
+  if (payload.startsWith("owner:")) {
+    const exp = parseInt(payload.slice(6), 10);
+    return Number.isFinite(exp) && exp > nowSec ? 1 : null;
+  }
+  return null;
+}
+
+export async function isSessionValid(request: Request, secretHex: string): Promise<boolean> {
+  return (await getSessionUserId(request, secretHex)) !== null;
 }
 
 export async function createCsrfToken(secretHex: string): Promise<string> {

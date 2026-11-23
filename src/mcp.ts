@@ -40,7 +40,7 @@ const ONBOARDING_QUESTIONS = [
   },
 ];
 
-export function buildMcpServer(env: Env, scopes: string[]) {
+export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
   const server = new McpServer({
     name: "ai-text-hub",
     version: "1.0.0",
@@ -53,7 +53,7 @@ export function buildMcpServer(env: Env, scopes: string[]) {
     "Fetch backend setup questions and currently saved user preferences (name priorities, nicknames, texting style). Call this on first setup or when onboarding a new chat.",
     {},
     async () => {
-      const saved = await getAllPreferences(env.DB);
+      const saved = await getAllPreferences(env.DB, userId);
       const missing = ONBOARDING_QUESTIONS.filter((q) => !saved[q.key]);
       return {
         content: [
@@ -93,11 +93,11 @@ export function buildMcpServer(env: Env, scopes: string[]) {
         return { content: [{ type: "text", text: "No non-empty preferences provided." }] };
       }
       const stmt = env.DB.prepare(
-        `INSERT INTO user_preferences (key, value, updated_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        `INSERT INTO user_preferences (user_id, key, value, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
       );
-      await env.DB.batch(entries.map(([k, v]) => stmt.bind(k.trim(), v.trim(), now)));
+      await env.DB.batch(entries.map(([k, v]) => stmt.bind(userId, k.trim(), v.trim(), now)));
       return {
         content: [
           {
@@ -119,11 +119,11 @@ export function buildMcpServer(env: Env, scopes: string[]) {
     async ({ listening, ttl_seconds }) => {
       const until = listening ? Date.now() + ttl_seconds * 1000 : 0;
       await env.DB.prepare(
-        `INSERT INTO user_preferences (key, value, updated_at)
-         VALUES ('ai_listening_until', ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        `INSERT INTO user_preferences (user_id, key, value, updated_at)
+         VALUES (?, 'ai_listening_until', ?, ?)
+         ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
       )
-        .bind(String(until), Date.now())
+        .bind(userId, String(until), Date.now())
         .run();
       return { content: [{ type: "text", text: JSON.stringify({ ok: true, listening }) }] };
     }
@@ -137,7 +137,7 @@ export function buildMcpServer(env: Env, scopes: string[]) {
         limit: z.number().int().min(1).max(50).optional().default(20),
       },
       async ({ limit }) => {
-        const chats = (await listChats(env.DB, limit)).filter(
+        const chats = (await listChats(env.DB, limit, userId)).filter(
           (c) => countChatParticipants(c.recipients || c.chat_title) <= 4
         );
         return {
@@ -168,7 +168,7 @@ export function buildMcpServer(env: Env, scopes: string[]) {
             content: [{ type: "text", text: "Blocked: Group chats with more than 4 people are never shared with the AI." }],
           };
         }
-        const msgs = (await readChatMessages(env.DB, chat_title, limit)).filter(
+        const msgs = (await readChatMessages(env.DB, chat_title, limit, userId)).filter(
           (m) => countChatParticipants(m.recipients || m.chat_title) <= 4
         );
         const formatted = msgs.map((m) => ({
@@ -204,9 +204,9 @@ export function buildMcpServer(env: Env, scopes: string[]) {
         limit: z.number().int().min(1).max(20).optional().default(8),
       },
       async ({ query, limit }) => {
-        const matches = await searchContactsWithPriority(env.DB, query, limit);
+        const matches = await searchContactsWithPriority(env.DB, query, limit, userId);
         if (matches.length === 0) {
-          const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts").first<{ c: number }>();
+          const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>();
           if (!totalRow || totalRow.c === 0) {
             return {
               content: [
@@ -254,7 +254,7 @@ export function buildMcpServer(env: Env, scopes: string[]) {
         chat_title: z.string().optional().describe("Optional chat title for group chats."),
       },
       async ({ recipient, message, chat_title }) => {
-        const config = await getConfig(env.DB);
+        const config = await getConfig(env.DB, userId);
         if (!config) {
           return { content: [{ type: "text", text: "Hub is not initialized yet. Open /setup first." }] };
         }
@@ -264,14 +264,14 @@ export function buildMcpServer(env: Env, scopes: string[]) {
 
         // If recipient looks like a name (no digits), resolve via known chats (with phone recipients) or contacts
         if (!/\d{7,}/.test(resolvedRecipients)) {
-          const chatMatches = await readChatMessages(env.DB, resolvedRecipients, 1);
+          const chatMatches = await readChatMessages(env.DB, resolvedRecipients, 1, userId);
           if (chatMatches.length > 0 && chatMatches[0].recipients && /\d{7,}/.test(chatMatches[0].recipients)) {
             resolvedRecipients = chatMatches[0].recipients;
             resolvedTitle = resolvedTitle || chatMatches[0].chat_title;
           } else {
-            const contactMatches = await searchContactsWithPriority(env.DB, resolvedRecipients, 1);
+            const contactMatches = await searchContactsWithPriority(env.DB, resolvedRecipients, 1, userId);
             if (contactMatches.length === 0) {
-              const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts").first<{ c: number }>();
+              const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>();
               const noContactsHint =
                 !totalRow || totalRow.c === 0
                   ? " Note: no contacts are uploaded yet, so please pass a phone number directly or use a recent chat title from list_chats."
@@ -336,9 +336,10 @@ export async function handleMcpRequest(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
-  scopes: string[]
+  scopes: string[],
+  userId = 1
 ): Promise<Response> {
-  const server = buildMcpServer(env, scopes);
+  const server = buildMcpServer(env, scopes, userId);
   const handler = createMcpHandler(server, { route: "/mcp" });
   return handler(request, env, ctx);
 }
