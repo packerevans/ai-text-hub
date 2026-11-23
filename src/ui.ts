@@ -547,6 +547,10 @@ export function renderDashboardPage(params: {
         <a class="btn" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
         <button class="btn" type="button" onclick="copyText('starterPromptMain')">Copy Message</button>
       </div>
+      <div style="margin-top:14px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--accent-border);border-left:4px solid var(--accent);font-size:1.05rem;line-height:1.45;">
+        <strong>Make sure you trigger the Shortcut when Messages is opened:</strong><br/>
+        <span style="font-size:0.95rem;">Shortcuts &rarr; Automation &rarr; <strong>+</strong> &rarr; App &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &rarr; Next &rarr; <strong>Run Immediately</strong> &rarr; <strong>AI Text Hub</strong>.</span>
+      </div>
     </div>
 
     <div class="card">
