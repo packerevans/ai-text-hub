@@ -120,6 +120,13 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       attempts INTEGER NOT NULL DEFAULT 0,
       window_start INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS password_resets (
+      token_hash TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      purpose TEXT NOT NULL DEFAULT 'reset',
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    )`,
   ];
   await db.batch(stmts.map((sql) => db.prepare(sql)));
 
@@ -253,6 +260,9 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   if (!(await hasColumn(db, "users", "pro_until"))) {
     await db.prepare("ALTER TABLE users ADD COLUMN pro_until INTEGER NOT NULL DEFAULT 0").run();
   }
+  if (!(await hasColumn(db, "users", "email"))) {
+    await db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run();
+  }
 
   schemaReady = true;
 }
@@ -314,9 +324,58 @@ export async function getConfig(db: D1Database, userId = 1): Promise<ConfigRow |
   return db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first<ConfigRow>();
 }
 
-export async function getUserByUsername(db: D1Database, username: string): Promise<ConfigRow | null> {
+export async function getUserByUsername(db: D1Database, usernameOrEmail: string): Promise<ConfigRow | null> {
   await ensureSchema(db);
-  return db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").bind(username.trim()).first<ConfigRow>();
+  const v = usernameOrEmail.trim();
+  return db
+    .prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE")
+    .bind(v, v)
+    .first<ConfigRow>();
+}
+
+export async function createPasswordResetToken(
+  db: D1Database,
+  userId: number,
+  tokenHash: string,
+  purpose = "reset",
+  ttlMs = 30 * 60 * 1000
+): Promise<void> {
+  await ensureSchema(db);
+  await db
+    .prepare(
+      "INSERT INTO password_resets (token_hash, user_id, purpose, expires_at) VALUES (?, ?, ?, ?)"
+    )
+    .bind(tokenHash, userId, purpose, Date.now() + ttlMs)
+    .run();
+}
+
+export async function getValidPasswordReset(
+  db: D1Database,
+  tokenHash: string
+): Promise<{ user_id: number; purpose: string } | null> {
+  await ensureSchema(db);
+  return db
+    .prepare(
+      "SELECT user_id, purpose FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?"
+    )
+    .bind(tokenHash, Date.now())
+    .first<{ user_id: number; purpose: string }>();
+}
+
+export async function consumePasswordReset(db: D1Database, tokenHash: string): Promise<void> {
+  await db.prepare("UPDATE password_resets SET used_at = ? WHERE token_hash = ?").bind(Date.now(), tokenHash).run();
+}
+
+export async function updateUserPassword(
+  db: D1Database,
+  userId: number,
+  pwHash: string,
+  pwSalt: string
+): Promise<void> {
+  await db
+    .prepare("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?")
+    .bind(pwHash, pwSalt, userId)
+    .run();
 }
 
 export async function getUserByApiKeyHash(db: D1Database, apiKeyHash: string): Promise<ConfigRow | null> {

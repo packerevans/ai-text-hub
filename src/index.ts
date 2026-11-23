@@ -17,7 +17,9 @@ import {
   AI_UNITS_PER_DRAFT,
   checkAuthRateLimit,
   claimPendingOutbox,
+  consumePasswordReset,
   countChatParticipants,
+  createPasswordResetToken,
   DAILY_FREE_AI_LIMIT,
   ensureSchema,
   getAllPreferences,
@@ -28,6 +30,7 @@ import {
   getUserByMcpBearerHash,
   getUserByUsername,
   getUserCount,
+  getValidPasswordReset,
   importContacts,
   ingestMessages,
   isContactsSyncNeeded,
@@ -41,17 +44,96 @@ import {
   recordAutoDraftUsage,
   releaseOutboxItem,
   resetAuthRateLimit,
+  updateUserPassword,
   type IncomingMessageInput,
 } from "./db";
 import { handleMcpRequest } from "./mcp";
 import type { AllowlistRow, ConfigRow, Env, OAuthUserProps } from "./types";
 import {
   renderDashboardPage,
+  renderForgotPasswordPage,
   renderLoginPage,
   renderOAuthAuthorizePage,
+  renderResetPasswordPage,
   renderSetupPage,
   renderSignupPage,
 } from "./ui";
+
+function isValidEmail(val: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(val) && val.length <= 120;
+}
+
+async function sendSecurityEmail(
+  env: Env,
+  toEmail: string,
+  subject: string,
+  html: string,
+  text: string
+): Promise<boolean> {
+  if (!isValidEmail(toEmail)) return false;
+  if (env.RESEND_API_KEY) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM || "AI Text Hub <noreply@elevatedcleaning.page>",
+        to: [toEmail],
+        subject,
+        html,
+        text,
+      }),
+    });
+    return res.ok;
+  }
+  if (env.EMAIL_WEBHOOK_URL) {
+    const res = await fetch(env.EMAIL_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Email-Secret": env.EMAIL_WEBHOOK_SECRET || "",
+      },
+      body: JSON.stringify({ to: toEmail, subject, html, text }),
+    });
+    return res.ok;
+  }
+  return false;
+}
+
+async function sendResetOrLockoutEmail(
+  env: Env,
+  origin: string,
+  user: ConfigRow,
+  purpose: "reset" | "lockout"
+): Promise<boolean> {
+  const toEmail = (user.email || user.username || "").trim().toLowerCase();
+  if (!isValidEmail(toEmail)) return false;
+  if (purpose === "lockout") {
+    const kvKey = `lockout_mail:${user.id}`;
+    if (await env.OAUTH_KV.get(kvKey)) return true;
+    await env.OAUTH_KV.put(kvKey, "1", { expirationTtl: 900 });
+  }
+  const rawToken = randomHex(24);
+  const tokenHash = await sha256Hex(rawToken);
+  await createPasswordResetToken(env.DB, user.id, tokenHash, purpose, 30 * 60 * 1000);
+  const link = `${origin}/reset-password?token=${rawToken}`;
+  const subject =
+    purpose === "lockout"
+      ? "Too many sign-in attempts — AI Text Hub"
+      : "Reset your AI Text Hub password";
+  const text =
+    purpose === "lockout"
+      ? `We noticed multiple failed sign-in attempts on your AI Text Hub account.\n\nIf this was you, you can unlock sign-in and choose a new password here (expires in 30 minutes):\n${link}\n\nIf this wasn't you, you can ignore this email—sign-in is rate-limited.`
+      : `Reset your AI Text Hub password using this link (expires in 30 minutes):\n${link}\n\nIf you didn't request this, you can safely ignore this email.`;
+  const html = `<p>${
+    purpose === "lockout"
+      ? "We noticed multiple failed sign-in attempts on your AI Text Hub account. If this was you, click below to unlock sign-in and set a new password:"
+      : "Click below to reset your AI Text Hub password:"
+  }</p><p><a href="${link}">${link}</a></p><p>This link expires in 30 minutes.</p>`;
+  return sendSecurityEmail(env, toEmail, subject, html, text);
+}
 
 function getClientIp(request: Request): string {
   return request.headers.get("CF-Connecting-IP") || "local";
@@ -352,18 +434,18 @@ const defaultHandler = {
         return renderSignupPage("Too many attempts. Try again in 15 minutes.");
       }
       const form = await request.formData();
-      const username = String(form.get("username") || "").trim().toLowerCase();
+      const email = String(form.get("email") || form.get("username") || "").trim().toLowerCase();
       const password = String(form.get("password") || "");
       const confirm = String(form.get("confirm") || "");
-      if (!/^[a-z0-9._-]{2,40}$/.test(username)) {
-        return renderSignupPage("Username must be 2–40 letters, numbers, dots, dashes, or underscores.");
+      if (!isValidEmail(email)) {
+        return renderSignupPage("Please enter a valid email address.");
       }
       if (password.length < 10) return renderSignupPage("Password must be at least 10 characters.");
       if (password !== confirm) return renderSignupPage("Passwords do not match.");
 
-      const existing = await getUserByUsername(env.DB, username);
+      const existing = await getUserByUsername(env.DB, email);
       if (existing) {
-        return renderSignupPage("That username is already taken. Try another or Sign In.");
+        return renderSignupPage("An account with that email already exists. Try Sign In instead.");
       }
 
       const { hash: pwHash, salt: pwSalt } = await hashPassword(password);
@@ -373,10 +455,10 @@ const defaultHandler = {
 
       const ins = await env.DB.prepare(
         `INSERT INTO users
-          (username, password_hash, password_salt, session_secret, api_key_hash, api_key_prefix, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+          (username, email, password_hash, password_salt, session_secret, api_key_hash, api_key_prefix, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-        .bind(username, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, Date.now())
+        .bind(email, email, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, Date.now())
         .run();
 
       const newId = Number(ins.meta?.last_row_id || 1);
@@ -391,23 +473,28 @@ const defaultHandler = {
     }
 
     if (path === "/login" && method === "GET") {
-      return renderLoginPage(undefined, url.searchParams.get("next") || "/dashboard");
+      const notice = url.searchParams.get("reset") === "1" ? "Password updated! Sign in with your new password." : undefined;
+      return renderLoginPage(undefined, url.searchParams.get("next") || "/dashboard", notice);
     }
 
     if (path === "/login" && method === "POST") {
       const ip = getClientIp(request);
-      if (!(await checkAuthRateLimit(env.DB, ip))) {
-        return renderLoginPage("Too many failed attempts. Wait 15 minutes.");
-      }
       const form = await request.formData();
-      const username = String(form.get("username") || "").trim().toLowerCase();
+      const identifier = String(form.get("email") || form.get("username") || "").trim().toLowerCase();
       const password = String(form.get("password") || "");
       const next = String(form.get("next") || "/dashboard");
       const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+      const user = await getUserByUsername(env.DB, identifier);
 
-      const user = await getUserByUsername(env.DB, username);
+      if (!(await checkAuthRateLimit(env.DB, ip))) {
+        if (user) {
+          await sendResetOrLockoutEmail(env, url.origin, user, "lockout");
+        }
+        return renderLoginPage("Too many failed attempts. Wait 15 minutes or use Forgot password?", safeNext);
+      }
+
       if (!user || !(await verifyPassword(password, user.password_hash, user.password_salt))) {
-        return renderLoginPage("Incorrect username or password.", safeNext);
+        return renderLoginPage("Incorrect email or password.", safeNext);
       }
       await resetAuthRateLimit(env.DB, ip);
       const cookie = await createSessionCookie(appSecret, user.id);
@@ -415,6 +502,70 @@ const defaultHandler = {
         status: 302,
         headers: { Location: safeNext, "Set-Cookie": cookie },
       });
+    }
+
+    if (path === "/forgot-password" && method === "GET") {
+      return renderForgotPasswordPage();
+    }
+
+    if (path === "/forgot-password" && method === "POST") {
+      const ip = getClientIp(request);
+      if (!(await checkAuthRateLimit(env.DB, ip))) {
+        return renderForgotPasswordPage({ error: "Too many requests. Try again in 15 minutes." });
+      }
+      const form = await request.formData();
+      const email = String(form.get("email") || "").trim().toLowerCase();
+      if (!isValidEmail(email)) {
+        return renderForgotPasswordPage({ error: "Please enter a valid email address." });
+      }
+      const user = await getUserByUsername(env.DB, email);
+      if (user) {
+        const sent = await sendResetOrLockoutEmail(env, url.origin, user, "reset");
+        if (!sent) {
+          return renderForgotPasswordPage({
+            error: "Email delivery is not configured on this Worker yet (set RESEND_API_KEY or EMAIL_WEBHOOK_URL).",
+          });
+        }
+      }
+      return renderForgotPasswordPage({
+        notice: "If an account exists for that email, a reset link has been sent (valid for 30 minutes).",
+      });
+    }
+
+    if (path === "/reset-password" && method === "GET") {
+      const token = url.searchParams.get("token") || "";
+      if (!/^[a-f0-9]{48}$/.test(token)) {
+        return renderForgotPasswordPage({ error: "Invalid or expired reset link. Request a new one below." });
+      }
+      const valid = await getValidPasswordReset(env.DB, await sha256Hex(token));
+      if (!valid) {
+        return renderForgotPasswordPage({ error: "This reset link has expired or was already used." });
+      }
+      return renderResetPasswordPage(token);
+    }
+
+    if (path === "/reset-password" && method === "POST") {
+      const ip = getClientIp(request);
+      const form = await request.formData();
+      const token = String(form.get("token") || "");
+      const password = String(form.get("password") || "");
+      const confirm = String(form.get("confirm") || "");
+      if (!/^[a-f0-9]{48}$/.test(token)) {
+        return renderForgotPasswordPage({ error: "Invalid or expired reset link." });
+      }
+      if (password.length < 10) return renderResetPasswordPage(token, "Password must be at least 10 characters.");
+      if (password !== confirm) return renderResetPasswordPage(token, "Passwords do not match.");
+
+      const tokenHash = await sha256Hex(token);
+      const valid = await getValidPasswordReset(env.DB, tokenHash);
+      if (!valid) {
+        return renderForgotPasswordPage({ error: "This reset link has expired or was already used." });
+      }
+      const { hash: pwHash, salt: pwSalt } = await hashPassword(password);
+      await updateUserPassword(env.DB, valid.user_id, pwHash, pwSalt);
+      await consumePasswordReset(env.DB, tokenHash);
+      await resetAuthRateLimit(env.DB, ip);
+      return new Response(null, { status: 302, headers: { Location: "/login?reset=1" } });
     }
 
     if (path === "/logout" && method === "POST") {
@@ -448,7 +599,7 @@ const defaultHandler = {
       const form = await request.formData();
       const csrf = String(form.get("csrf") || "");
       const authNonce = String(form.get("auth_nonce") || "");
-      const username = String(form.get("username") || "").trim().toLowerCase();
+      const identifier = String(form.get("email") || form.get("username") || "").trim().toLowerCase();
       const password = String(form.get("password") || "");
       const scopes = form.getAll("scope").map(String).filter(Boolean);
 
@@ -471,21 +622,24 @@ const defaultHandler = {
           error: "Session expired. Please try again.",
         });
       }
+      const user = await getUserByUsername(env.DB, identifier);
       if (!(await checkAuthRateLimit(env.DB, ip))) {
+        if (user) {
+          await sendResetOrLockoutEmail(env, url.origin, user, "lockout");
+        }
         return renderOAuthAuthorizePage({
           clientName,
           csrfToken: await createCsrfToken(appSecret),
           authNonce,
-          error: "Too many failed attempts. Wait 15 minutes.",
+          error: "Too many failed attempts. Wait 15 minutes or reset your password.",
         });
       }
-      const user = await getUserByUsername(env.DB, username);
       if (!user || !(await verifyPassword(password, user.password_hash, user.password_salt))) {
         return renderOAuthAuthorizePage({
           clientName,
           csrfToken: await createCsrfToken(appSecret),
           authNonce,
-          error: "Incorrect username or password.",
+          error: "Incorrect email or password.",
         });
       }
 

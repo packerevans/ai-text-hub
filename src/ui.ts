@@ -85,7 +85,7 @@ code {
   border: 1px solid var(--border);
 }
 label { display: block; font-weight: 700; font-size: 0.88rem; margin: 12px 0 6px; }
-input[type="password"], input[type="text"], input[type="number"], textarea, select {
+input[type="password"], input[type="text"], input[type="email"], input[type="number"], textarea, select {
   width: 100%; padding: 10px 12px; border-radius: 0;
   border: 1px solid var(--border);
   background: var(--surface); color: var(--ink);
@@ -321,7 +321,7 @@ export function renderSignupPage(error?: string): Response {
       <span class="pill">30-Second Setup</span>
       <h1>Create Your Free Account</h1>
       <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li>Pick a username and password.</li>
+        <li>Sign up with your email and password.</li>
         <li>You will immediately get your private Shortcut API Key and MCP URL.</li>
       </ul>
       <div style="padding:10px 12px;margin-bottom:14px;border:1px solid var(--accent-border);background:var(--accent-tint);font-size:0.84rem;color:var(--ink);">
@@ -329,8 +329,8 @@ export function renderSignupPage(error?: string): Response {
       </div>
       ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form method="POST" action="/signup">
-        <label for="username">Username</label>
-        <input id="username" name="username" type="text" minlength="2" maxlength="40" placeholder="e.g. alex" required autocomplete="username" />
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" maxlength="120" placeholder="you@example.com" required autocomplete="email" />
         <label for="password">Password (min 10 characters)</label>
         <input id="password" name="password" type="password" minlength="10" required autocomplete="new-password" />
         <label for="confirm">Confirm Password</label>
@@ -345,23 +345,72 @@ export function renderSignupPage(error?: string): Response {
   );
 }
 
-export function renderLoginPage(error?: string, nextUrl = "/dashboard"): Response {
+export function renderLoginPage(error?: string, nextUrl = "/dashboard", notice?: string): Response {
   return layout(
     "Sign In — AI Text Hub",
     `
     <div class="card" style="max-width:460px;margin:48px auto;">
       <h1>Sign In to AI Text Hub</h1>
-      <p>Enter your username and password to manage your Shortcut key, contacts, and connected AI clients.</p>
+      <p>Enter your email and password to manage your Shortcut key, contacts, and connected AI clients.</p>
+      ${notice ? `<div class="banner ok">${esc(notice)}</div>` : ""}
       ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form method="POST" action="/login">
         <input type="hidden" name="next" value="${esc(nextUrl)}" />
-        <label for="username">Username</label>
-        <input id="username" name="username" type="text" placeholder="admin or your username" required autocomplete="username" />
+        <label for="email">Email</label>
+        <input id="email" name="email" type="text" placeholder="you@example.com" required autocomplete="email" />
         <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
-        <div class="row" style="margin-top:16px;justify-content:space-between;">
+        <div style="margin-top:8px;text-align:right;">
+          <a href="/forgot-password" style="font-size:0.82rem;color:var(--muted);text-decoration:underline;">Forgot password?</a>
+        </div>
+        <div class="row" style="margin-top:14px;justify-content:space-between;">
           <button class="btn btn-primary" type="submit">Sign In</button>
           <a href="/signup" style="font-size:0.88rem;color:var(--accent);font-weight:700;text-decoration:none;">New here? Create Account &rarr;</a>
+        </div>
+      </form>
+    </div>
+    `
+  );
+}
+
+export function renderForgotPasswordPage(params?: { error?: string; notice?: string }): Response {
+  return layout(
+    "Reset Password — AI Text Hub",
+    `
+    <div class="card" style="max-width:460px;margin:48px auto;">
+      <h1>Reset Your Password</h1>
+      <p>Enter your account email and we&rsquo;ll send you a reset link (valid for 30 minutes).</p>
+      ${params?.notice ? `<div class="banner ok">${esc(params.notice)}</div>` : ""}
+      ${params?.error ? `<div class="banner err">${esc(params.error)}</div>` : ""}
+      <form method="POST" action="/forgot-password">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" placeholder="you@example.com" required autocomplete="email" />
+        <div class="row" style="margin-top:16px;justify-content:space-between;">
+          <button class="btn btn-primary" type="submit">Send Reset Link</button>
+          <a href="/login" style="font-size:0.88rem;color:var(--accent);font-weight:700;text-decoration:none;">&larr; Back to Sign In</a>
+        </div>
+      </form>
+    </div>
+    `
+  );
+}
+
+export function renderResetPasswordPage(token: string, error?: string): Response {
+  return layout(
+    "Choose New Password — AI Text Hub",
+    `
+    <div class="card" style="max-width:460px;margin:48px auto;">
+      <h1>Choose a New Password</h1>
+      <p>Enter a new password (min 10 characters) to unlock and secure your account.</p>
+      ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
+      <form method="POST" action="/reset-password">
+        <input type="hidden" name="token" value="${esc(token)}" />
+        <label for="password">New Password (min 10 characters)</label>
+        <input id="password" name="password" type="password" minlength="10" required autocomplete="new-password" />
+        <label for="confirm">Confirm New Password</label>
+        <input id="confirm" name="confirm" type="password" minlength="10" required autocomplete="new-password" />
+        <div style="margin-top:16px;">
+          <button class="btn btn-primary" type="submit">Save New Password</button>
         </div>
       </form>
     </div>
@@ -381,7 +430,7 @@ export function renderOAuthAuthorizePage(params: {
     <div class="card" style="max-width:520px;margin:32px auto;">
       <span class="pill">OAuth 2.1 Remote MCP</span>
       <h1>Connect ${esc(params.clientName)}</h1>
-      <p>Enter your username and password to grant <strong>${esc(params.clientName)}</strong> scoped access to your private AI Text Hub.</p>
+      <p>Enter your email and password to grant <strong>${esc(params.clientName)}</strong> scoped access to your private AI Text Hub.</p>
       ${params.error ? `<div class="banner err">${esc(params.error)}</div>` : ""}
       <form method="POST" action="/authorize">
         <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
@@ -390,12 +439,13 @@ export function renderOAuthAuthorizePage(params: {
         <label style="font-weight:400"><input type="checkbox" name="scope" value="messages:read" checked /> Read recent chats (past 6 messages)</label>
         <label style="font-weight:400"><input type="checkbox" name="scope" value="contacts:read" checked /> Search synced contacts</label>
         <label style="font-weight:400"><input type="checkbox" name="scope" value="outbox:write" checked /> Queue outbound texts (respects allowlist &amp; hourly cap)</label>
-        <label for="username">Username</label>
-        <input id="username" name="username" type="text" placeholder="admin or your username" required autocomplete="username" />
+        <label for="email">Email</label>
+        <input id="email" name="email" type="text" placeholder="you@example.com" required autocomplete="email" />
         <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
-        <div class="row" style="margin-top:18px">
+        <div class="row" style="margin-top:18px;justify-content:space-between;">
           <button class="btn btn-primary" type="submit">Approve Connection</button>
+          <a href="/forgot-password" style="font-size:0.82rem;color:var(--muted);text-decoration:underline;">Forgot password?</a>
         </div>
       </form>
     </div>
