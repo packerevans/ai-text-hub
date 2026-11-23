@@ -7,10 +7,6 @@ export interface Env {
   AI?: {
     run(model: string, input: unknown): Promise<{ response?: string }>;
   };
-  RESEND_API_KEY?: string;
-  EMAIL_FROM?: string;
-  EMAIL_WEBHOOK_URL?: string;
-  EMAIL_WEBHOOK_SECRET?: string;
 }
 
 export interface ConfigRow {

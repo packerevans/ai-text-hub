@@ -360,57 +360,9 @@ export function renderLoginPage(error?: string, nextUrl = "/dashboard", notice?:
         <input id="email" name="email" type="text" placeholder="you@example.com" required autocomplete="email" />
         <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
-        <div style="margin-top:8px;text-align:right;">
-          <a href="/forgot-password" style="font-size:0.82rem;color:var(--muted);text-decoration:underline;">Forgot password?</a>
-        </div>
-        <div class="row" style="margin-top:14px;justify-content:space-between;">
+        <div class="row" style="margin-top:16px;justify-content:space-between;">
           <button class="btn btn-primary" type="submit">Sign In</button>
           <a href="/signup" style="font-size:0.88rem;color:var(--accent);font-weight:700;text-decoration:none;">New here? Create Account &rarr;</a>
-        </div>
-      </form>
-    </div>
-    `
-  );
-}
-
-export function renderForgotPasswordPage(params?: { error?: string; notice?: string }): Response {
-  return layout(
-    "Reset Password — AI Text Hub",
-    `
-    <div class="card" style="max-width:460px;margin:48px auto;">
-      <h1>Reset Your Password</h1>
-      <p>Enter your account email and we&rsquo;ll send you a reset link (valid for 30 minutes).</p>
-      ${params?.notice ? `<div class="banner ok">${esc(params.notice)}</div>` : ""}
-      ${params?.error ? `<div class="banner err">${esc(params.error)}</div>` : ""}
-      <form method="POST" action="/forgot-password">
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email" placeholder="you@example.com" required autocomplete="email" />
-        <div class="row" style="margin-top:16px;justify-content:space-between;">
-          <button class="btn btn-primary" type="submit">Send Reset Link</button>
-          <a href="/login" style="font-size:0.88rem;color:var(--accent);font-weight:700;text-decoration:none;">&larr; Back to Sign In</a>
-        </div>
-      </form>
-    </div>
-    `
-  );
-}
-
-export function renderResetPasswordPage(token: string, error?: string): Response {
-  return layout(
-    "Choose New Password — AI Text Hub",
-    `
-    <div class="card" style="max-width:460px;margin:48px auto;">
-      <h1>Choose a New Password</h1>
-      <p>Enter a new password (min 10 characters) to unlock and secure your account.</p>
-      ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
-      <form method="POST" action="/reset-password">
-        <input type="hidden" name="token" value="${esc(token)}" />
-        <label for="password">New Password (min 10 characters)</label>
-        <input id="password" name="password" type="password" minlength="10" required autocomplete="new-password" />
-        <label for="confirm">Confirm New Password</label>
-        <input id="confirm" name="confirm" type="password" minlength="10" required autocomplete="new-password" />
-        <div style="margin-top:16px;">
-          <button class="btn btn-primary" type="submit">Save New Password</button>
         </div>
       </form>
     </div>
@@ -443,9 +395,8 @@ export function renderOAuthAuthorizePage(params: {
         <input id="email" name="email" type="text" placeholder="you@example.com" required autocomplete="email" />
         <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
-        <div class="row" style="margin-top:18px;justify-content:space-between;">
+        <div class="row" style="margin-top:18px;">
           <button class="btn btn-primary" type="submit">Approve Connection</button>
-          <a href="/forgot-password" style="font-size:0.82rem;color:var(--muted);text-decoration:underline;">Forgot password?</a>
         </div>
       </form>
     </div>
