@@ -2,13 +2,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import {
+  completeReminder,
   countChatParticipants,
+  createReminder,
   getAllPreferences,
   getConfig,
   importContacts,
   listChats,
+  listReminders,
   normalizePhone,
   queueOutboxItem,
+  queueShortcutTask,
   readChatMessages,
   requestContactsSync,
   searchContactsWithPriority,
@@ -160,20 +164,39 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
 
     server.tool(
       "read_chat",
-      "Read up to the past 6 messages for a specific chat (by chat_title or recipient number).",
+      "Read up to the past 6 messages for a specific chat (by chat_title or recipient number). Automatically queues an iPhone history fetch if no messages are found or refresh_from_iphone is true.",
       {
         chat_title: z.string().min(1).describe("Chat title, contact name, or phone number."),
-        limit: z.number().int().min(1).max(6).optional().default(6),
+        limit: z.number().int().min(1).max(25).optional().default(6),
+        days_back: z.number().int().min(1).max(90).optional().default(30).describe("Adjustable days lookback when fetching from iPhone."),
+        refresh_from_iphone: z.boolean().optional().default(false).describe("Set true to queue a targeted iPhone message fetch for this chat."),
       },
-      async ({ chat_title, limit }) => {
+      async ({ chat_title, limit, days_back, refresh_from_iphone }) => {
         if (countChatParticipants(chat_title) > 4) {
           return {
             content: [{ type: "text", text: "Blocked: Group chats with more than 4 people are never shared with the AI." }],
           };
         }
-        const msgs = (await readChatMessages(env.DB, chat_title, limit, userId)).filter(
+        const msgs = (await readChatMessages(env.DB, chat_title, Math.min(limit, 6), userId)).filter(
           (m) => countChatParticipants(m.recipients || m.chat_title) <= 4
         );
+        if (msgs.length === 0 || refresh_from_iphone) {
+          await queueShortcutTask(env.DB, userId, "fetch_chat", chat_title, limit, days_back);
+          if (msgs.length === 0) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    messages: [],
+                    fetch_queued: true,
+                    note: `No messages cached for "${chat_title}". Queued a targeted iPhone fetch (limit ${limit}, last ${days_back} days) for the next time Messages opens.`,
+                  }),
+                },
+              ],
+            };
+          }
+        }
         const formatted = msgs.map((m) => ({
           chat_title: m.chat_title,
           recipients: m.recipients,
@@ -209,7 +232,7 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
       async ({ query, limit }) => {
         const matches = await searchContactsWithPriority(env.DB, query, limit, userId);
         if (matches.length === 0) {
-          await requestContactsSync(env.DB, userId);
+          await queueShortcutTask(env.DB, userId, "find_contact", query, Math.min(10, limit), 30);
           return {
             content: [
               {
@@ -217,8 +240,8 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
                 text: JSON.stringify(
                   {
                     matches: [],
-                    sync_requested: true,
-                    note: "No matching contact found. Requested an automatic contact sync from the user's iPhone on next Messages open (or pass a phone number directly to queue_text).",
+                    lookup_queued: true,
+                    note: `No matching contact in cache for "${query}". Queued a targeted iPhone contact lookup for the next time Messages opens (or pass a phone number directly to queue_text).`,
                   },
                   null,
                   2
@@ -289,6 +312,14 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
           };
         }
         await importContacts(env.DB, [{ name: name.trim(), phone: resolvedPhone, normalized: norm }], userId);
+        await queueShortcutTask(
+          env.DB,
+          userId,
+          "add_contact",
+          JSON.stringify({ name: name.trim(), phone: resolvedPhone }),
+          1,
+          1
+        );
         return {
           content: [
             {
@@ -296,6 +327,7 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
               text: JSON.stringify({
                 ok: true,
                 saved: { name: name.trim(), phone: resolvedPhone, normalized_phone: norm },
+                iphone_sync_queued: true,
               }),
             },
           ],
@@ -387,6 +419,40 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
       }
     );
   }
+
+  server.tool(
+    "set_reminder",
+    "Save a follow-up texting reminder (e.g. 'Remind me to text Mom at 5pm').",
+    {
+      contact_name: z.string().min(1),
+      note: z.string().min(1),
+      due_at: z.string().optional().default(""),
+    },
+    async ({ contact_name, note, due_at }) => {
+      const id = await createReminder(env.DB, userId, contact_name, note, due_at);
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, id, contact_name, note, due_at }) }] };
+    }
+  );
+
+  server.tool(
+    "list_reminders",
+    "List saved texting follow-up reminders.",
+    { include_done: z.boolean().optional().default(false) },
+    async ({ include_done }) => {
+      const reminders = await listReminders(env.DB, userId, include_done);
+      return { content: [{ type: "text", text: JSON.stringify(reminders, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "complete_reminder",
+    "Mark a texting reminder as completed by ID.",
+    { id: z.number().int().min(1) },
+    async ({ id }) => {
+      const ok = await completeReminder(env.DB, userId, id);
+      return { content: [{ type: "text", text: JSON.stringify({ ok, id }) }] };
+    }
+  );
 
   return server;
 }

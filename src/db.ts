@@ -131,6 +131,25 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       user_id INTEGER NOT NULL,
       redeemed_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS shortcut_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL DEFAULT 1,
+      task_type TEXT NOT NULL CHECK (task_type IN ('find_contact', 'fetch_chat', 'add_contact')),
+      query TEXT NOT NULL,
+      item_limit INTEGER NOT NULL DEFAULT 10,
+      days_back INTEGER NOT NULL DEFAULT 30,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, task_type, query)
+    )`,
+    `CREATE TABLE IF NOT EXISTS reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL DEFAULT 1,
+      contact_name TEXT NOT NULL,
+      note TEXT NOT NULL,
+      due_at TEXT DEFAULT '',
+      done INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`,
   ];
   await db.batch(stmts.map((sql) => db.prepare(sql)));
 
@@ -1013,4 +1032,106 @@ export async function readChatMessages(
     .bind(userId, `%${q}%`, `%${q}%`, cap)
     .all<MessageRow>();
   return (fuzzy.results || []).reverse();
+}
+
+export async function queueShortcutTask(
+  db: D1Database,
+  userId: number,
+  taskType: "find_contact" | "fetch_chat" | "add_contact",
+  query: string,
+  itemLimit = 10,
+  daysBack = 30
+): Promise<void> {
+  await ensureSchema(db);
+  const q = query.trim();
+  if (!q) return;
+  const lim = Math.min(25, Math.max(1, itemLimit));
+  const days = Math.min(90, Math.max(1, daysBack));
+  await db
+    .prepare(
+      `INSERT INTO shortcut_tasks (user_id, task_type, query, item_limit, days_back, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, task_type, query) DO UPDATE SET item_limit = excluded.item_limit, days_back = excluded.days_back, created_at = excluded.created_at`
+    )
+    .bind(userId, taskType, q, lim, days, Date.now())
+    .run();
+}
+
+export async function claimShortcutManifest(
+  db: D1Database,
+  userId = 1
+): Promise<{
+  find_contacts: { query: string; limit: number }[];
+  fetch_chats: { query: string; limit: number; days: number }[];
+  add_contacts: { name: string; phone: string }[];
+}> {
+  await ensureSchema(db);
+  const res = await db
+    .prepare(
+      "SELECT id, task_type, query, item_limit, days_back FROM shortcut_tasks WHERE user_id = ? ORDER BY created_at ASC LIMIT 13"
+    )
+    .bind(userId)
+    .all<{ id: number; task_type: string; query: string; item_limit: number; days_back: number }>();
+  const rows = res.results || [];
+  if (rows.length > 0) {
+    const ids = rows.map((r) => r.id);
+    await db
+      .prepare(`DELETE FROM shortcut_tasks WHERE user_id = ? AND id IN (${ids.map(() => "?").join(",")})`)
+      .bind(userId, ...ids)
+      .run();
+  }
+  const find_contacts: { query: string; limit: number }[] = [];
+  const fetch_chats: { query: string; limit: number; days: number }[] = [];
+  const add_contacts: { name: string; phone: string }[] = [];
+  for (const r of rows) {
+    if (r.task_type === "find_contact" && find_contacts.length < 5) {
+      find_contacts.push({ query: r.query, limit: Math.min(10, Math.max(1, r.item_limit)) });
+    } else if (r.task_type === "fetch_chat" && fetch_chats.length < 3) {
+      fetch_chats.push({
+        query: r.query,
+        limit: Math.min(25, Math.max(1, r.item_limit)),
+        days: Math.min(90, Math.max(1, r.days_back)),
+      });
+    } else if (r.task_type === "add_contact" && add_contacts.length < 5) {
+      try {
+        const parsed = JSON.parse(r.query) as { name?: string; phone?: string };
+        if (parsed.name && parsed.phone) add_contacts.push({ name: parsed.name, phone: parsed.phone });
+      } catch {}
+    }
+  }
+  return { find_contacts, fetch_chats, add_contacts };
+}
+
+export async function createReminder(
+  db: D1Database,
+  userId: number,
+  contactName: string,
+  note: string,
+  dueAt = ""
+): Promise<number> {
+  await ensureSchema(db);
+  const res = await db
+    .prepare("INSERT INTO reminders (user_id, contact_name, note, due_at, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(userId, contactName.trim(), note.trim(), dueAt.trim(), Date.now())
+    .run();
+  return Number(res.meta?.last_row_id || 0);
+}
+
+export async function listReminders(
+  db: D1Database,
+  userId: number,
+  includeDone = false
+): Promise<{ id: number; contact_name: string; note: string; due_at: string; done: number }[]> {
+  await ensureSchema(db);
+  const sql = includeDone
+    ? "SELECT id, contact_name, note, due_at, done FROM reminders WHERE user_id = ? ORDER BY done ASC, id DESC LIMIT 30"
+    : "SELECT id, contact_name, note, due_at, done FROM reminders WHERE user_id = ? AND done = 0 ORDER BY id DESC LIMIT 30";
+  const res = await db.prepare(sql).bind(userId).all<{ id: number; contact_name: string; note: string; due_at: string; done: number }>();
+  return res.results || [];
+}
+
+export async function completeReminder(db: D1Database, userId: number, id: number): Promise<boolean> {
+  await ensureSchema(db);
+  const res = await db.prepare("UPDATE reminders SET done = 1 WHERE id = ? AND user_id = ?").bind(id, userId).run();
+  return (res.meta?.changes ?? 0) > 0;
 }

@@ -17,6 +17,7 @@ import {
   AI_UNITS_PER_DRAFT,
   checkAuthRateLimit,
   claimPendingOutbox,
+  claimShortcutManifest,
   claimStripeSessionOnce,
   countChatParticipants,
   DAILY_FREE_AI_LIMIT,
@@ -96,7 +97,10 @@ const defaultHandler = {
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const items = await claimPendingOutbox(env.DB, 10, apiUser.id);
+      const [items, manifest] = await Promise.all([
+        claimPendingOutbox(env.DB, 10, apiUser.id),
+        claimShortcutManifest(env.DB, apiUser.id),
+      ]);
       return Response.json({
         count: items.length,
         items: items.map((i) => ({
@@ -106,6 +110,7 @@ const defaultHandler = {
           body: i.body,
           require_approval: i.require_approval === 1,
         })),
+        ...manifest,
       });
     }
 
