@@ -97,15 +97,17 @@ const defaultHandler = {
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const [items, manifest, pendingRaw] = await Promise.all([
+      const [items, manifest, pendingRaw, syncNeeded] = await Promise.all([
         claimPendingOutbox(env.DB, 10, apiUser.id),
         claimShortcutManifest(env.DB, apiUser.id),
         env.OAUTH_KV.get(`ai_pending:${apiUser.id}`),
+        isContactsSyncNeeded(env.DB, apiUser.id),
       ]);
       const aiPending = Math.max(0, parseInt(pendingRaw || "0", 10) || 0);
       return Response.json({
         count: items.length,
         ai_pending: aiPending,
+        contacts_sync_needed: syncNeeded ? 1 : 0,
         items: items.map((i) => ({
           id: i.id,
           chat_title: i.chat_title,
@@ -200,13 +202,29 @@ const defaultHandler = {
       }
       const ct = (request.headers.get("Content-Type") || "").toLowerCase();
       let parsed: { name: string; phone: string; normalized: string }[] = [];
+      const parseTextContacts = (raw: string) => {
+        if (raw.includes("<c>")) {
+          const out: { name: string; phone: string; normalized: string }[] = [];
+          const re = /<c>\s*<n>([\s\S]*?)<\/n>\s*<p>([\s\S]*?)<\/p>\s*<\/c>/g;
+          let m: RegExpExecArray | null;
+          while ((m = re.exec(raw)) !== null) {
+            const name = m[1].trim();
+            const phone = m[2].trim();
+            const digits = phone.replace(/\D/g, "");
+            const normalized = digits.length >= 10 ? digits.slice(-10) : digits;
+            if (name && normalized.length >= 7) out.push({ name, phone, normalized });
+          }
+          return out;
+        }
+        return parseVcf(raw);
+      };
       if (ct.includes("application/json")) {
         const body = (await request.json().catch(() => null)) as
           | { contacts?: { name?: string; phone?: string }[]; text?: string }
           | { name?: string; phone?: string }[]
           | null;
         if (body && !Array.isArray(body) && typeof body.text === "string") {
-          parsed = parseVcf(body.text);
+          parsed = parseTextContacts(body.text);
         } else {
           const rawList = Array.isArray(body) ? body : body && Array.isArray(body.contacts) ? body.contacts : [];
           parsed = rawList
@@ -221,7 +239,7 @@ const defaultHandler = {
         }
       } else {
         const vcfText = await request.text();
-        parsed = parseVcf(vcfText);
+        parsed = parseTextContacts(vcfText);
       }
       const imported = await importContacts(env.DB, parsed, apiUser.id);
       await markContactsSynced(env.DB, apiUser.id);
