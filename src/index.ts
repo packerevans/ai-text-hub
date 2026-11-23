@@ -17,6 +17,7 @@ import {
   AI_UNITS_PER_DRAFT,
   checkAuthRateLimit,
   claimPendingOutbox,
+  countChatParticipants,
   DAILY_FREE_AI_LIMIT,
   ensureSchema,
   getAllPreferences,
@@ -31,6 +32,7 @@ import {
   ingestMessages,
   isContactsSyncNeeded,
   isHostedInstance,
+  isShortCodeOrOtp,
   isUserProActive,
   markContactsSynced,
   parseCustomDelimitedMessages,
@@ -236,7 +238,20 @@ const defaultHandler = {
         env.AI &&
         (!hosted || isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
       ) {
-        const target = items.find((m) => m.is_unread && m.body && m.body.trim().length > 0);
+        const target = items.find((m) => {
+          const body = (m.body || "").trim();
+          const title = (m.chat_title || "").trim();
+          const recips = (m.recipients || title).trim();
+          const sender = (m.sender || title).trim();
+          return (
+            m.is_unread &&
+            body.length > 0 &&
+            body !== "\uFFFC" &&
+            countChatParticipants(recips) <= 4 &&
+            countChatParticipants(title) <= 4 &&
+            !isShortCodeOrOtp(sender, recips, body)
+          );
+        });
         if (target) {
           try {
             const prefs = await getAllPreferences(env.DB, apiUser.id);

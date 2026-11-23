@@ -374,16 +374,16 @@ export function normalizePhone(raw: string): string {
 export function countChatParticipants(recipientsOrTitle: string): number {
   const raw = (recipientsOrTitle || "").trim();
   if (!raw) return 0;
-  // Group chats from iOS Shortcuts arrive as "num1 + num2 + num3" or comma-separated
-  if (raw.includes(" + ") || raw.includes(",")) {
+  // Group chats from iOS Shortcuts can arrive comma-, plus-, semicolon-, newline-, or &-separated
+  const phoneMatches = raw.match(/\+?\d[\d\s()-]{6,}\d/g) || [];
+  if (raw.includes(" + ") || /[,;\n\r]/.test(raw) || /\s+&\s+/.test(raw)) {
     const parts = raw
-      .split(/\s+\+\s+|,/)
+      .split(/\s+\+\s+|[,;\n\r]+|\s+&\s+/)
       .map((p) => p.trim())
       .filter(Boolean);
-    return parts.length;
+    return Math.max(parts.length, phoneMatches.length);
   }
-  const phoneMatches = raw.match(/\+?\d[\d\s()-]{6,}\d/g);
-  return phoneMatches ? Math.max(1, phoneMatches.length) : 1;
+  return phoneMatches.length > 0 ? phoneMatches.length : 1;
 }
 
 export async function resolveFriendlyChatTitle(
@@ -652,6 +652,12 @@ export async function queueOutboxItem(
   params: { recipients: string; chatTitle?: string; body: string }
 ): Promise<{ ok: true; id: string; require_approval: boolean } | { ok: false; error: string }> {
   await ensureSchema(db);
+  if (countChatParticipants(params.recipients) > 4 || countChatParticipants(params.chatTitle || "") > 4) {
+    return {
+      ok: false,
+      error: "Group chats with more than 4 people are blocked.",
+    };
+  }
   const now = Date.now();
   const oneHourAgo = now - 3_600_000;
 
