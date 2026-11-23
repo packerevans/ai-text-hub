@@ -397,9 +397,10 @@ export function renderOAuthAuthorizePage(params: {
         <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
         <div class="row" style="margin-top:18px;">
-          <button class="btn btn-primary" type="submit">Approve Connection</button>
+          <button class="btn btn-primary" type="submit" id="authApproveBtn">Approve Connection</button>
         </div>
       </form>
+      <script>window.addEventListener("pageshow",function(){var b=document.getElementById("authApproveBtn");if(b){b.disabled=false;b.textContent="Approve Connection";}});</script>
     </div>
     `
   );

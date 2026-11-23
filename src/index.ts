@@ -590,11 +590,17 @@ const defaultHandler = {
       const scopes = form.getAll("scope").map(String).filter(Boolean);
 
       if (!/^[a-f0-9]{32}$/.test(authNonce)) {
-        return new Response("Invalid or expired authorization request.", { status: 400 });
+        return new Response(
+          `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Link Expired — AI Text Hub</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#fff;color:#0a0a0a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}a{color:#d94e00;font-weight:700}</style></head><body><div style="max-width:420px"><h2>Authorization Link Expired</h2><p>Please close this window and start the connection again from Claude, ChatGPT, or Grok.</p></div></body></html>`,
+          { status: 400, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
+        );
       }
       const storedReqJson = await env.OAUTH_KV.get(`auth_req:${authNonce}`);
       if (!storedReqJson) {
-        return new Response("Authorization request expired. Please start again from your AI client.", { status: 400 });
+        return new Response(
+          `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Link Expired — AI Text Hub</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#fff;color:#0a0a0a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}a{color:#d94e00;font-weight:700}</style></head><body><div style="max-width:420px"><h2>Authorization Request Expired</h2><p>Please close this window and start the connection again from Claude, ChatGPT, or Grok.</p></div></body></html>`,
+          { status: 400, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
+        );
       }
       const oauthReq = JSON.parse(storedReqJson);
       const clientInfo = await env.OAUTH_PROVIDER.lookupClient(oauthReq.clientId);
@@ -958,10 +964,19 @@ export default {
         return handleMcpRequest(request, env, ctx, ["*"], bearerUser.id);
       }
     }
-    // Serve RFC 9728 protected-resource metadata at both root and /mcp suffix for maximum MCP client compatibility
+    // Serve RFC 9728 / RFC 8414 metadata at both root and /mcp suffix for maximum MCP client compatibility (Claude, ChatGPT, Grok)
     if (url.pathname === "/.well-known/oauth-protected-resource") {
       const rewritten = new URL(request.url);
       rewritten.pathname = "/.well-known/oauth-protected-resource/mcp";
+      return getOAuthProvider(url.origin).fetch(new Request(rewritten, request), env, ctx);
+    }
+    if (
+      url.pathname === "/.well-known/oauth-authorization-server/mcp" ||
+      url.pathname === "/.well-known/openid-configuration" ||
+      url.pathname === "/.well-known/openid-configuration/mcp"
+    ) {
+      const rewritten = new URL(request.url);
+      rewritten.pathname = "/.well-known/oauth-authorization-server";
       return getOAuthProvider(url.origin).fetch(new Request(rewritten, request), env, ctx);
     }
     return getOAuthProvider(url.origin).fetch(request, env, ctx);
