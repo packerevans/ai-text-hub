@@ -22,31 +22,24 @@ import {
 } from "./db";
 import type { Env } from "./types";
 
-const ONBOARDING_QUESTIONS = [
+const BASE_ONBOARDING_QUESTIONS = [
   {
     key: "family_last_names",
     question:
-      "When you refer to someone by first name only (e.g., 'Alex' or 'Sam'), which last names should I prioritize first? (Comma-separated in priority order.)",
-  },
-  {
-    key: "nicknames",
-    question:
-      "Any nicknames or shorthand names I should map to specific contacts? (e.g., 'Mom = Jane Doe', 'Babe = ...')",
-  },
-  {
-    key: "texting_style",
-    question:
-      "How should your drafted texts sound? Include catchphrases, punctuation habits, and whether you want a pattern like: acknowledge their last message -> transition to your ask -> optional question.",
-  },
-  {
-    key: "schedule_context",
-    question:
-      "What should I know about your weekly schedule, classes/credits, homework/study blocks, or work hours when suggesting times to meet?",
+      "Are there any family last names or overlapping first names I should prioritize first when you mention someone by first name? (Optional — I'll also learn as we go.)",
   },
   {
     key: "sample_replies_calibration",
     question:
-      "To learn how you actually text different people (so Auto-Draft and my drafts sound like you), reply naturally to these 3 sample texts: (1) Mom: 'Hey, are you free for dinner Sunday?' (2) Close friend: 'yo what are you up to tonight' (3) Coworker/client: 'Can you send me that update when you get a sec?'",
+      "Want to reply to 3 quick sample texts so I can match your texting style? (1) Family: 'Hey, are you free for dinner Sunday?' (2) Friend: 'yo what are you up to tonight' (3) Coworker: 'Can you send me that update when you get a sec?'",
+  },
+];
+
+const AUTO_DRAFT_QUESTIONS = [
+  {
+    key: "auto_draft_rules",
+    question:
+      "Any quick rules for your automatic background drafts (e.g., keep replies super short, skip certain topics, or always ask before confirming times)? You can always adjust this later.",
   },
 ];
 
@@ -64,11 +57,14 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
     {},
     async () => {
       const [saved, config] = await Promise.all([getAllPreferences(env.DB, userId), getConfig(env.DB, userId)]);
-      const missing = ONBOARDING_QUESTIONS.filter((q) => !saved[q.key]);
       const autoDraftOn = config?.auto_draft_enabled === 1;
       const maxParticipants = Math.min(4, Math.max(1, config?.auto_draft_max_participants ?? 4));
       const dailyUsed = config ? getEffectiveDailyUsage(config) : 0;
       const isPro = config ? isUserProActive(config) : false;
+      const activeQuestions = autoDraftOn
+        ? [...BASE_ONBOARDING_QUESTIONS, ...AUTO_DRAFT_QUESTIONS]
+        : BASE_ONBOARDING_QUESTIONS;
+      const missing = activeQuestions.filter((q) => !saved[q.key]);
       return {
         content: [
           {
@@ -76,8 +72,8 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
             text: JSON.stringify(
               {
                 instructions: autoDraftOn
-                  ? `Auto-Draft Replies is ACTIVATED on this account for chats with 1–${maxParticipants} people (${isPro ? "Unlimited $12/yr plan" : `${dailyUsed}/${DAILY_FREE_AI_LIMIT} daily credits used`}). Let the user know Auto-Draft is active, ask any unanswered setup questions (including the sample_replies_calibration prompts so they reply to texts from different people), and save both a distilled texting_style summary and sample_replies_calibration using save_user_preferences.`
-                  : "Auto-Draft Replies is currently OFF on the dashboard (user can turn it on in their dashboard with 2,000 free credits/day or $12/yr Unlimited, for 1–4 person chats). Ask any unanswered setup questions (including sample_replies_calibration) and save their answers using save_user_preferences.",
+                  ? `Be upbeat and concise! Give a 1-sentence excited reaction that Auto-Draft is now ON for chats with 1–${maxParticipants} people (${isPro ? "Unlimited $12/yr" : `${dailyUsed}/${DAILY_FREE_AI_LIMIT} credits used today`}), briefly note why tuning helps drafts match their real voice before they hit Send, ask only the unanswered questions below conversationally (never overwhelm them), save answers + a distilled texting_style summary via save_user_preferences, and remind them they can come back anytime to adjust.`
+                  : "Be upbeat, warm, and concise! Start with a 1-sentence overview ('Looks like anytime you open Messages on your iPhone, I can read your chats and queue up texts for you to approve!'). Then ask ONLY the 2 light unanswered questions below conversationally (one step at a time, never overwhelming them): (1) overlapping/family last names to prioritize as you get started, and (2) 3 fun quick sample texts (family, friend, coworker) to learn their style — or let them skip and learn as they go. Save answers + a distilled texting_style via save_user_preferences, and remind them they can always come back to adjust nicknames, style, or schedule anytime.",
                 auto_draft_status: {
                   enabled: autoDraftOn,
                   max_participants: maxParticipants,
@@ -87,7 +83,7 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
                 },
                 saved_preferences: saved,
                 unanswered_questions: missing,
-                all_questions: ONBOARDING_QUESTIONS,
+                all_questions: activeQuestions,
               },
               null,
               2

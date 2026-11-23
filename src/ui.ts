@@ -427,6 +427,7 @@ export function renderDashboardPage(params: {
   const grokLaunchUrl = `https://grok.com/?q=${encodedPrompt}`;
   const autoDraftOn = params.config.auto_draft_enabled === 1;
   const maxParticipants = Math.min(4, Math.max(1, params.config.auto_draft_max_participants ?? 4));
+  const autoDraftPrompt = `Hey! I just turned on Auto-Draft Replies for chats with 1–${maxParticipants} people. Please run get_onboarding_config to see my current setup and help me tune my auto-reply style and rules!`;
   const hosted = isHostedInstance(params.origin);
   const isPro = isUserProActive(params.config);
   const dailyUsed = getEffectiveDailyUsage(params.config);
@@ -607,6 +608,19 @@ export function renderDashboardPage(params: {
                <div style="height:100%;width:${usagePct}%;background:var(--accent);"></div>
              </div>
              <a class="btn" href="${upgradeUrl}">Upgrade to Unlimited ($12/year) &rarr;</a>`
+      }
+      ${
+        autoDraftOn
+          ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+               <label style="margin-top:0;">Tune Auto-Draft With Your AI (Copy &amp; Paste)</label>
+               <div class="code-box" id="autoDraftPromptBox" style="margin-bottom:8px;">${esc(autoDraftPrompt)}</div>
+               <div class="row">
+                 <button class="btn btn-primary" type="button" onclick="copyText('autoDraftPromptBox')">Copy Auto-Draft Prompt</button>
+                 <a class="btn" href="https://claude.ai/new?q=${encodeURIComponent(autoDraftPrompt)}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
+                 <a class="btn" href="https://chatgpt.com/?q=${encodeURIComponent(autoDraftPrompt)}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
+               </div>
+             </div>`
+          : ""
       }
     </div>
 
