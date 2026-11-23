@@ -44,10 +44,12 @@ A 100% private, AI Text Automation Hub running on **Cloudflare Workers + D1 + KV
 5. Contacts sync automatically on first run, every 30 days, and whenever your AI cannot find a contact.
 
 ### 4. Connect Claude, ChatGPT, or Grok
-1. Open **Settings → Connectors** in Claude, ChatGPT, or Grok.
+1. Open your AI client's connector settings:
+   - **Claude:** Settings → Connectors → Add Custom Connector.
+   - **ChatGPT:** Settings → Apps/Plugins → Advanced → turn **Developer Mode ON**, then click **Create App**.
 2. Add your Remote MCP URL:
    - `https://ai-text-hub.<your-subdomain>.workers.dev/mcp`
-3. Sign in on your Worker's `/authorize` screen using your username and password.
+3. Select **OAuth** and sign in on your Worker's `/authorize` screen using your username and password.
 4. Paste the **Starter Prompt** from your dashboard into a new chat to set your name priorities and texting style.
 
 ---
