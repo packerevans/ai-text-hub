@@ -285,7 +285,8 @@ const defaultHandler = {
             m.is_unread &&
             body.length > 0 &&
             body !== "\uFFFC" &&
-            participants === 1 &&
+            participants >= 1 &&
+            participants <= 4 &&
             !isShortCodeOrOtp(sender, recips, body) &&
             !seenChats.has(key)
           ) {
@@ -311,7 +312,11 @@ const defaultHandler = {
                   },
                   {
                     role: "user",
-                    content: `From ${target.sender || target.chat_title}: ${target.body}`,
+                    content: `From ${target.sender || target.chat_title}${
+                      target.chat_title && target.sender && target.chat_title !== target.sender
+                        ? ` in ${target.chat_title}`
+                        : ""
+                    }: ${target.body}`,
                   },
                 ],
               });
