@@ -218,15 +218,18 @@ const defaultHandler = {
         }
         return parseVcf(raw);
       };
+      let rawForDebug = "";
       if (ct.includes("application/json")) {
         const body = (await request.json().catch(() => null)) as
           | { contacts?: { name?: string; phone?: string }[]; text?: string }
           | { name?: string; phone?: string }[]
           | null;
         if (body && !Array.isArray(body) && typeof body.text === "string") {
+          rawForDebug = body.text;
           parsed = parseTextContacts(body.text);
         } else {
           const rawList = Array.isArray(body) ? body : body && Array.isArray(body.contacts) ? body.contacts : [];
+          rawForDebug = JSON.stringify(rawList).slice(0, 200);
           parsed = rawList
             .map((c) => {
               const name = String(c.name || "").trim();
@@ -239,10 +242,28 @@ const defaultHandler = {
         }
       } else {
         const vcfText = await request.text();
+        rawForDebug = vcfText;
         parsed = parseTextContacts(vcfText);
       }
       const imported = await importContacts(env.DB, parsed, apiUser.id);
       await markContactsSynced(env.DB, apiUser.id);
+      await env.DB.prepare(
+        "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?, 'last_contacts_debug', ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+      )
+        .bind(
+          apiUser.id,
+          JSON.stringify({
+            ct,
+            rawLen: rawForDebug.length,
+            parsedCount: parsed.length,
+            imported,
+            preview: rawForDebug.slice(0, 160).replace(/\d/g, "X"),
+            at: new Date().toISOString(),
+          }),
+          Date.now()
+        )
+        .run()
+        .catch(() => {});
       return Response.json({ ok: true, imported });
     }
 
