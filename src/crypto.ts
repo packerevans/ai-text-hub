@@ -154,7 +154,7 @@ export async function verifyCsrfToken(token: string, secretHex: string): Promise
   const parts = payload.split(":");
   const ts = parseInt(parts[1] || "0", 10);
   const now = Math.floor(Date.now() / 1000);
-  return Number.isFinite(ts) && now - ts >= 0 && now - ts <= 3600;
+  return Number.isFinite(ts) && now - ts >= -60 && now - ts <= 3600;
 }
 
 export function extractBearerOrApiKey(request: Request): string | null {

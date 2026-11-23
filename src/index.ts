@@ -568,13 +568,16 @@ const defaultHandler = {
       const csrfToken = await createCsrfToken(appSecret);
       const authNonce = randomHex(16);
       await env.OAUTH_KV.put(`auth_req:${authNonce}`, JSON.stringify(oauthReq), {
-        expirationTtl: 600,
+        expirationTtl: 1800,
       });
-      return renderOAuthAuthorizePage({
+      const resp = renderOAuthAuthorizePage({
         clientName: clientInfo?.clientName || oauthReq.clientId,
         csrfToken,
         authNonce,
       });
+      const headers = new Headers(resp.headers);
+      headers.set("Cache-Control", "no-store");
+      return new Response(resp.body, { status: resp.status, headers });
     }
 
     if (path === "/authorize" && method === "POST") {
@@ -625,7 +628,6 @@ const defaultHandler = {
         });
       }
 
-      await env.OAUTH_KV.delete(`auth_req:${authNonce}`);
       await resetAuthRateLimit(env.DB, ip);
       if (identifier) await resetAuthRateLimit(env.DB, `acct:${identifier}`);
       const finalScopes = scopes.length > 0 ? scopes : ["messages:read", "contacts:read"];
@@ -642,6 +644,7 @@ const defaultHandler = {
           clientLabel: clientName,
         } satisfies OAuthUserProps,
       });
+      await env.OAUTH_KV.delete(`auth_req:${authNonce}`).catch(() => {});
       return Response.redirect(redirectTo, 302);
     }
 

@@ -385,7 +385,7 @@ export function renderOAuthAuthorizePage(params: {
       <h1>Connect ${esc(params.clientName)}</h1>
       <p>Enter your email and password to grant <strong>${esc(params.clientName)}</strong> scoped access to your private AI Text Hub.</p>
       ${params.error ? `<div class="banner err">${esc(params.error)}</div>` : ""}
-      <form method="POST" action="/authorize">
+      <form method="POST" action="/authorize" onsubmit="const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Connecting...';}">
         <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
         <input type="hidden" name="auth_nonce" value="${esc(params.authNonce)}" />
         <label>Permissions</label>
