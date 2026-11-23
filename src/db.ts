@@ -4,6 +4,8 @@ import type { AllowlistRow, ConfigRow, ContactRow, MessageRow, OutboxRow } from 
 const MAX_MESSAGES_PER_CHAT = 6;
 const OUTBOX_LEASE_MS = 90_000;
 const CONTACTS_SYNC_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
+export const DAILY_FREE_AI_LIMIT = 1000;
+export const AI_UNITS_PER_DRAFT = 100;
 
 let schemaReady = false;
 
@@ -236,7 +238,48 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     ]);
   }
 
+  if (!(await hasColumn(db, "users", "auto_draft_enabled"))) {
+    await db.prepare("ALTER TABLE users ADD COLUMN auto_draft_enabled INTEGER NOT NULL DEFAULT 0").run();
+  }
+  if (!(await hasColumn(db, "users", "auto_draft_daily_used"))) {
+    await db.prepare("ALTER TABLE users ADD COLUMN auto_draft_daily_used INTEGER NOT NULL DEFAULT 0").run();
+  }
+  if (!(await hasColumn(db, "users", "auto_draft_day"))) {
+    await db.prepare("ALTER TABLE users ADD COLUMN auto_draft_day TEXT NOT NULL DEFAULT ''").run();
+  }
+  if (!(await hasColumn(db, "users", "is_pro"))) {
+    await db.prepare("ALTER TABLE users ADD COLUMN is_pro INTEGER NOT NULL DEFAULT 0").run();
+  }
+  if (!(await hasColumn(db, "users", "pro_until"))) {
+    await db.prepare("ALTER TABLE users ADD COLUMN pro_until INTEGER NOT NULL DEFAULT 0").run();
+  }
+
   schemaReady = true;
+}
+
+export function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function getEffectiveDailyUsage(user: ConfigRow): number {
+  const today = utcToday();
+  return user.auto_draft_day === today ? user.auto_draft_daily_used || 0 : 0;
+}
+
+export function isUserProActive(user: ConfigRow): boolean {
+  return user.is_pro === 1 && (!user.pro_until || user.pro_until > Date.now());
+}
+
+export async function recordAutoDraftUsage(db: D1Database, userId: number, units: number): Promise<void> {
+  await ensureSchema(db);
+  const today = utcToday();
+  const user = await getConfig(db, userId);
+  if (!user) return;
+  const current = user.auto_draft_day === today ? user.auto_draft_daily_used || 0 : 0;
+  await db
+    .prepare("UPDATE users SET auto_draft_daily_used = ?, auto_draft_day = ? WHERE id = ?")
+    .bind(current + units, today, userId)
+    .run();
 }
 
 export async function getAppSessionSecret(db: D1Database): Promise<string> {

@@ -15,5 +15,8 @@
     {
       "binding": "OAUTH_KV"
     }
-  ]
+  ],
+  "ai": {
+    "binding": "AI"
+  }
 }

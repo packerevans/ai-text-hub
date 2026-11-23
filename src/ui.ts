@@ -1,3 +1,4 @@
+import { DAILY_FREE_AI_LIMIT, getEffectiveDailyUsage, isUserProActive } from "./db";
 import type { AllowlistRow, ConfigRow } from "./types";
 
 function esc(s: string): string {
@@ -421,6 +422,11 @@ export function renderDashboardPage(params: {
   const claudeLaunchUrl = `https://claude.ai/new?q=${encodedPrompt}`;
   const chatgptLaunchUrl = `https://chatgpt.com/?q=${encodedPrompt}`;
   const grokLaunchUrl = `https://grok.com/?q=${encodedPrompt}`;
+  const autoDraftOn = params.config.auto_draft_enabled === 1;
+  const isPro = isUserProActive(params.config);
+  const dailyUsed = getEffectiveDailyUsage(params.config);
+  const usagePct = isPro ? 100 : Math.min(100, Math.round((dailyUsed / DAILY_FREE_AI_LIMIT) * 100));
+  const upgradeUrl = `https://elevatedcleaning.page/api/ai-text-hub/upgrade?user=${encodeURIComponent(params.config.username || "admin")}&return=${encodeURIComponent(params.origin)}`;
 
   const allowRows = params.allowlist
     .map(
@@ -540,6 +546,29 @@ export function renderDashboardPage(params: {
         <a class="btn" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
         <button class="btn" type="button" onclick="copyText('starterPromptMain')">Copy Prompt</button>
       </div>
+    </div>
+
+    <div class="card">
+      <span class="pill">Background AI</span>
+      <div class="row" style="justify-content:space-between;margin-top:8px;">
+        <h2 style="margin:0;">Auto-Draft Replies</h2>
+        <form method="POST" action="/api/auto-draft/toggle" style="margin:0;">
+          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+          <button class="btn ${autoDraftOn ? "btn-primary" : ""}" type="submit">${autoDraftOn ? "Auto-Draft: ON" : "Turn Auto-Draft ON"}</button>
+        </form>
+      </div>
+      <ul style="margin:10px 0 12px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li>Drafts replies for new unread texts using built-in Cloudflare AI (approval menu still required before sending).</li>
+        <li>Daily usage: <strong>${isPro ? "Unlimited ($10/yr Plan Active)" : `${dailyUsed} / ${DAILY_FREE_AI_LIMIT} units`}</strong></li>
+      </ul>
+      ${
+        isPro
+          ? ""
+          : `<div style="height:6px;background:var(--surface-2);border:1px solid var(--border);margin-bottom:12px;">
+               <div style="height:100%;width:${usagePct}%;background:var(--accent);"></div>
+             </div>
+             <a class="btn" href="${upgradeUrl}">Upgrade to Unlimited ($10/year) &rarr;</a>`
+      }
     </div>
 
     <div class="card">

@@ -14,11 +14,15 @@ import {
 } from "./crypto";
 import {
   ackOutboxItem,
+  AI_UNITS_PER_DRAFT,
   checkAuthRateLimit,
   claimPendingOutbox,
+  DAILY_FREE_AI_LIMIT,
   ensureSchema,
+  getAllPreferences,
   getAppSessionSecret,
   getConfig,
+  getEffectiveDailyUsage,
   getUserByApiKeyHash,
   getUserByMcpBearerHash,
   getUserByUsername,
@@ -26,9 +30,12 @@ import {
   importContacts,
   ingestMessages,
   isContactsSyncNeeded,
+  isUserProActive,
   markContactsSynced,
   parseCustomDelimitedMessages,
   parseVcf,
+  queueOutboxItem,
+  recordAutoDraftUsage,
   releaseOutboxItem,
   resetAuthRateLimit,
   type IncomingMessageInput,
@@ -220,7 +227,52 @@ const defaultHandler = {
         items = parseCustomDelimitedMessages(raw);
       }
       const stats = await ingestMessages(env.DB, items, apiUser.id);
-      return Response.json({ ok: true, processed: true, ...stats });
+      let autoDrafted = 0;
+      if (
+        stats.stored > 0 &&
+        apiUser.auto_draft_enabled === 1 &&
+        env.AI &&
+        (isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
+      ) {
+        const target = items.find((m) => m.is_unread && m.body && m.body.trim().length > 0);
+        if (target) {
+          try {
+            const prefs = await getAllPreferences(env.DB, apiUser.id);
+            const styleHint = prefs["texting_style"] ? `Texting style: ${prefs["texting_style"]}.` : "Keep it short, natural, and casual.";
+            const aiRes = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+              messages: [
+                {
+                  role: "system",
+                  content: `Draft a brief, helpful SMS reply on behalf of the user. ${styleHint} Output ONLY the reply text, no quotes.`,
+                },
+                {
+                  role: "user",
+                  content: `From ${target.sender || target.chat_title}: ${target.body}`,
+                },
+              ],
+            });
+            const draft = (aiRes?.response || "").trim().slice(0, 600);
+            if (draft) {
+              const queued = await queueOutboxItem(
+                env.DB,
+                { ...apiUser, require_approval_default: 1 },
+                {
+                  recipients: (target.recipients || target.chat_title).trim(),
+                  chatTitle: target.chat_title.trim(),
+                  body: draft,
+                }
+              );
+              if (queued.ok) {
+                await recordAutoDraftUsage(env.DB, apiUser.id, AI_UNITS_PER_DRAFT);
+                autoDrafted = 1;
+              }
+            }
+          } catch {
+            // Non-fatal: incoming messages are still stored cleanly
+          }
+        }
+      }
+      return Response.json({ ok: true, processed: true, ...stats, auto_drafted: autoDrafted });
     }
 
     const appSecret = await getAppSessionSecret(env.DB);
@@ -524,6 +576,45 @@ const defaultHandler = {
       return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
         freshMcpBearer: key,
         notice: "Static MCP Bearer token enabled for CLI / Grok API clients.",
+      });
+    }
+
+    if (path === "/api/auto-draft/toggle" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const nextVal = activeUser.auto_draft_enabled === 1 ? 0 : 1;
+      await env.DB.prepare("UPDATE users SET auto_draft_enabled = ? WHERE id = ?")
+        .bind(nextVal, activeUser.id)
+        .run();
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+        notice: nextVal === 1 ? "Background Auto-Draft AI enabled." : "Background Auto-Draft AI paused.",
+      });
+    }
+
+    if (path === "/upgrade-success" && method === "GET") {
+      const sessionId = url.searchParams.get("session_id") || "";
+      const userParam = (url.searchParams.get("user") || "").trim().toLowerCase();
+      if (sessionId && userParam && userParam === (activeUser.username || "admin").toLowerCase()) {
+        try {
+          const verifyRes = await fetch(
+            `https://elevatedcleaning.page/api/ai-text-hub/verify-upgrade?session_id=${encodeURIComponent(sessionId)}&user=${encodeURIComponent(userParam)}`
+          );
+          const data = (await verifyRes.json()) as { ok?: boolean };
+          if (data?.ok) {
+            const proUntil = Date.now() + 366 * 24 * 60 * 60 * 1000;
+            await env.DB.prepare("UPDATE users SET is_pro = 1, pro_until = ?, auto_draft_enabled = 1 WHERE id = ?")
+              .bind(proUntil, activeUser.id)
+              .run();
+            return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+              notice: "Unlimited Auto-Draft AI ($10/yr) is now active on your account!",
+            });
+          }
+        } catch {}
+      }
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+        notice: "Could not verify upgrade payment yet. Please refresh in a moment.",
       });
     }
 

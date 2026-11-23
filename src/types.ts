@@ -4,6 +4,9 @@ export interface Env {
   DB: D1Database;
   OAUTH_KV: KVNamespace;
   OAUTH_PROVIDER: OAuthHelpers;
+  AI?: {
+    run(model: string, input: unknown): Promise<{ response?: string }>;
+  };
 }
 
 export interface ConfigRow {
@@ -19,6 +22,11 @@ export interface ConfigRow {
   hourly_send_cap: number;
   require_approval_default: number;
   allowlist_only: number;
+  auto_draft_enabled?: number;
+  auto_draft_daily_used?: number;
+  auto_draft_day?: string;
+  is_pro?: number;
+  pro_until?: number;
   created_at: number;
 }
 
