@@ -44,9 +44,12 @@ const BASE_CSS = `
   --grid-line: rgba(255, 255, 255, 0.04);
 }
 * { box-sizing: border-box; }
+html { overflow-x: hidden; max-width: 100%; }
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   color: var(--ink);
   background-color: var(--bg);
@@ -55,10 +58,10 @@ body {
     linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
   background-size: 48px 48px;
   line-height: 1.55;
-  padding: 32px 16px 64px;
+  padding: 28px 16px 64px;
   -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 860px; margin: 0 auto; }
+.wrap { max-width: 860px; width: 100%; margin: 0 auto; overflow-x: hidden; }
 .card {
   position: relative;
   background: var(--bg);
@@ -67,6 +70,8 @@ body {
   border-radius: 0;
   padding: 24px;
   margin-bottom: 18px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 h1 { margin: 8px 0 8px; font-size: 1.65rem; font-weight: 800; letter-spacing: -0.025em; }
 h2 { margin: 0 0 12px; font-size: 1.15rem; font-weight: 800; letter-spacing: -0.015em; }
@@ -112,7 +117,18 @@ input:focus, textarea:focus, select:focus {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem; padding: 10px 12px; border-radius: 0;
   border: 1px solid var(--border);
-  background: var(--surface); word-break: break-all; flex: 1;
+  background: var(--surface); overflow-wrap: anywhere; word-break: break-word; flex: 1; min-width: 0; max-width: 100%;
+}
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.grid-2 > * { min-width: 0; max-width: 100%; }
+@media (max-width: 640px) {
+  body { padding: 16px 12px 48px; }
+  .card { padding: 16px 14px; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .btn { max-width: 100%; white-space: normal; text-align: center; }
+  .row { flex-direction: column; align-items: stretch; }
+  .row > .btn, .row > form, .row > form > .btn { width: 100%; }
+  .ca-phone { width: 100%; max-width: 240px; }
 }
 .banner {
   padding: 12px 14px; border-radius: 0; margin-bottom: 16px; font-size: 0.9rem;
@@ -125,7 +141,6 @@ input:focus, textarea:focus, select:focus {
   text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s;
 }
 .dropzone.over { border-color: var(--accent); background: var(--accent-tint); }
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 .pill {
   display: inline-block; padding: 3px 10px; border-radius: 0; font-size: 0.74rem;
   font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
