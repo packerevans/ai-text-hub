@@ -42,6 +42,7 @@ import {
   parseCustomDelimitedMessages,
   parseVcf,
   queueOutboxItem,
+  readChatMessages,
   recordAutoDraftUsage,
   recordSignupLog,
   releaseOutboxItem,
@@ -314,6 +315,15 @@ const defaultHandler = {
       ) {
         const seenChats = new Set<string>();
         const maxParticipants = Math.min(4, Math.max(1, Number(apiUser.auto_draft_max_participants ?? 4) || 4));
+        const prefs = await getAllPreferences(env.DB, apiUser.id);
+        const ignoredSet = new Set(
+          (prefs["ignored_chats"] || "")
+            .split(/[,;\n\r]+/)
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean)
+        );
+        const isLikelyNamedLargeGroup = (t: string, r: string) =>
+          t === r && !/\d/.test(t) && (t.split(/\s+/).length >= 4 || /\s-\s|-\s|:/.test(t));
         for (const m of items) {
           const body = (m.body || "").trim();
           const title = (m.chat_title || "").trim();
@@ -327,6 +337,8 @@ const defaultHandler = {
             body !== "\uFFFC" &&
             participants >= 1 &&
             participants <= maxParticipants &&
+            !ignoredSet.has(key) &&
+            !isLikelyNamedLargeGroup(title, recips) &&
             !isShortCodeOrOtp(sender, recips, body) &&
             !seenChats.has(key)
           ) {
@@ -337,29 +349,47 @@ const defaultHandler = {
         }
         if (targetChats.length > 0 && env.AI) {
           const aiBinding = env.AI;
-          const prefs = await getAllPreferences(env.DB, apiUser.id);
-          const styleHint = prefs["texting_style"]
-            ? `Texting style: ${prefs["texting_style"]}.`
-            : "Keep it short, natural, and casual.";
+          const styleParts = [
+            prefs["texting_style"] ? `Texting style: ${prefs["texting_style"]}.` : "Keep it short, natural, and casual.",
+            prefs["sample_replies_calibration"] ? `User's example replies: ${prefs["sample_replies_calibration"]}.` : "",
+            prefs["auto_draft_rules"] ? `Rules: ${prefs["auto_draft_rules"]}.` : "",
+            prefs["schedule_context"] ? `Schedule context: ${prefs["schedule_context"]}.` : "",
+          ].filter(Boolean);
+          const styleHint = styleParts.join(" ");
           draftDebug = "ok";
           const draftOne = async (target: IncomingMessageInput) => {
             try {
-              const aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+              const recent = await readChatMessages(env.DB, target.chat_title, 4, apiUser.id).catch(() => []);
+              const historyText = recent
+                .slice()
+                .reverse()
+                .map((r) => `${r.sender || r.chat_title}: ${r.body}`)
+                .join("\n");
+              const userPrompt = historyText
+                ? `Recent messages in "${target.chat_title}":\n${historyText}\n\nDraft a natural reply to the latest message.`
+                : `From ${target.sender || target.chat_title}${
+                    target.chat_title && target.sender && target.chat_title !== target.sender
+                      ? ` in ${target.chat_title}`
+                      : ""
+                  }: ${target.body}`;
+              const aiPayload = {
                 messages: [
                   {
                     role: "system",
-                    content: `Draft a brief, helpful SMS reply on behalf of the user. ${styleHint} Output ONLY the reply text, no quotes.`,
+                    content: `Draft a brief, helpful SMS reply on behalf of the user. Match their exact voice and tone. ${styleHint} Output ONLY the reply text, no quotes.`,
                   },
                   {
                     role: "user",
-                    content: `From ${target.sender || target.chat_title}${
-                      target.chat_title && target.sender && target.chat_title !== target.sender
-                        ? ` in ${target.chat_title}`
-                        : ""
-                    }: ${target.body}`,
+                    content: userPrompt,
                   },
                 ],
-              });
+              };
+              let aiRes: { response?: string } | null = null;
+              try {
+                aiRes = await aiBinding.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", aiPayload);
+              } catch {
+                aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", aiPayload);
+              }
               const draft = (aiRes?.response || "").trim().slice(0, 600);
               if (!draft) {
                 draftDebug = "empty_ai_response";
