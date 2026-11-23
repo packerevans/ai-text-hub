@@ -531,13 +531,14 @@ export function renderDashboardPage(params: {
       <h2 style="margin-top:8px;">Launch Your AI With Onboarding Prompt</h2>
       <ul style="margin:0 0 12px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
         <li>First add <code>${esc(mcpUrl)}</code> in your AI&apos;s connector settings.</li>
-        <li>Then tap a link below to open a new chat with your setup prompt pre-filled:</li>
+        <li>Then tap a 1-click link below (pre-fills the prompt) or copy the message:</li>
       </ul>
+      <div class="code-box" id="starterPromptMain" style="margin-bottom:10px;">${esc(starterPrompt)}</div>
       <div class="row">
         <a class="btn btn-primary" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
         <a class="btn" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
         <a class="btn" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
-        <button class="btn" type="button" onclick="copyText('starterPrompt')">Copy Prompt</button>
+        <button class="btn" type="button" onclick="copyText('starterPromptMain')">Copy Prompt</button>
       </div>
     </div>
 
