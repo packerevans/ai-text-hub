@@ -504,7 +504,11 @@ const defaultHandler = {
           .bind(username, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, Date.now())
           .run();
 
-        const newId = Number(ins.meta?.last_row_id || 1);
+        const rawId = Number(ins.meta?.last_row_id || 0);
+        if (!Number.isFinite(rawId) || rawId <= 0) {
+          return renderSetupPage("Unable to create admin user. Please try again.");
+        }
+        const newId = rawId;
         await resetAuthRateLimit(env.DB, ip);
         const cookie = await createSessionCookie(appSecret, newId);
         const resp = await renderDashboardFromState(env, url.origin, newId, appSecret, {
@@ -562,7 +566,11 @@ const defaultHandler = {
         .bind(email, email, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, now)
         .run();
 
-      const newId = Number(ins.meta?.last_row_id || 1);
+      const rawId = Number(ins.meta?.last_row_id || 0);
+      if (!Number.isFinite(rawId) || rawId <= 0) {
+        return renderSignupPage("Unable to create account. Please try again.");
+      }
+      const newId = rawId;
       await recordSignupLog(env.DB, newId, email, now);
       console.log(JSON.stringify({ event: "signup", userId: newId, email, signedUpAt: new Date(now).toISOString() }));
       if (isHostedInstance(url.origin)) {
@@ -1004,8 +1012,11 @@ function getOAuthProvider(origin: string): OAuthProvider<Env> {
       apiHandler: {
         async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
           const props = (ctx as unknown as { props?: OAuthUserProps }).props;
+          const userId = props?.userId;
+          if (!userId || !Number.isFinite(userId) || userId <= 0) {
+            return Response.json({ error: "Unauthorized" }, { status: 401 });
+          }
           const scopes = props?.scopes || ["messages:read", "contacts:read", "outbox:write"];
-          const userId = props?.userId ?? 1;
           return handleMcpRequest(request, env, ctx, scopes, userId);
         },
       },

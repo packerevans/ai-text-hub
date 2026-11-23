@@ -289,6 +289,11 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   if (!(await hasColumn(db, "users", "email"))) {
     await db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run();
   }
+  await db.batch([
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_reminders_user_done ON reminders(user_id, done, id DESC)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_mcp_bearer ON users(mcp_bearer_hash)`),
+  ]);
 
   schemaReady = true;
 }
@@ -314,12 +319,14 @@ export function isHostedInstance(originOrHost: string): boolean {
 export async function recordAutoDraftUsage(db: D1Database, userId: number, units: number): Promise<void> {
   await ensureSchema(db);
   const today = utcToday();
-  const user = await getConfig(db, userId);
-  if (!user) return;
-  const current = user.auto_draft_day === today ? user.auto_draft_daily_used || 0 : 0;
   await db
-    .prepare("UPDATE users SET auto_draft_daily_used = ?, auto_draft_day = ? WHERE id = ?")
-    .bind(current + units, today, userId)
+    .prepare(
+      `UPDATE users
+       SET auto_draft_daily_used = CASE WHEN auto_draft_day = ? THEN auto_draft_daily_used + ? ELSE ? END,
+           auto_draft_day = ?
+       WHERE id = ?`
+    )
+    .bind(today, units, units, today, userId)
     .run();
 }
 
