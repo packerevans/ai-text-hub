@@ -21,6 +21,7 @@ import {
   countChatParticipants,
   DAILY_FREE_AI_LIMIT,
   ensureSchema,
+  findUnknownMessageNumbers,
   getAllPreferences,
   getAppSessionSecret,
   getConfig,
@@ -244,7 +245,10 @@ const defaultHandler = {
         const raw = await request.text();
         items = parseCustomDelimitedMessages(raw);
       }
-      const stats = await ingestMessages(env.DB, items, apiUser.id);
+      const [stats, unknownNumbers] = await Promise.all([
+        ingestMessages(env.DB, items, apiUser.id),
+        findUnknownMessageNumbers(env.DB, items, apiUser.id),
+      ]);
       let autoDrafted = 0;
       const hosted = isHostedInstance(url.hostname);
       if (
@@ -304,7 +308,13 @@ const defaultHandler = {
           }
         }
       }
-      return Response.json({ ok: true, processed: true, ...stats, auto_drafted: autoDrafted });
+      return Response.json({
+        ok: true,
+        processed: true,
+        ...stats,
+        auto_drafted: autoDrafted,
+        unknown_numbers: unknownNumbers,
+      });
     }
 
     const appSecret = await getAppSessionSecret(env.DB);

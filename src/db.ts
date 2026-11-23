@@ -795,6 +795,42 @@ export function parseVcf(vcfText: string): { name: string; phone: string; normal
   return contacts;
 }
 
+export async function findUnknownMessageNumbers(
+  db: D1Database,
+  items: IncomingMessageInput[],
+  userId = 1
+): Promise<string[]> {
+  await ensureSchema(db);
+  const candidates = new Set<string>();
+  for (const item of items) {
+    const rawFields = [item.sender || "", item.recipients || "", item.chat_title || ""];
+    for (const field of rawFields) {
+      const parts = field.split(/\s+\+\s+|[,;\n\r]+|\s+&\s+/);
+      for (const p of parts) {
+        const norm = normalizePhone(p);
+        if (norm.length >= 7 && norm.length <= 15) {
+          candidates.add(norm);
+        }
+      }
+    }
+  }
+  const all = Array.from(candidates).slice(0, 30);
+  if (all.length === 0) return [];
+  const placeholders = all.map(() => "?").join(",");
+  const res = await db
+    .prepare(`SELECT normalized_phone FROM contacts WHERE user_id = ? AND normalized_phone IN (${placeholders})`)
+    .bind(userId, ...all)
+    .all<{ normalized_phone: string }>();
+  const known = new Set((res.results || []).map((r) => r.normalized_phone));
+  const suffixes = new Set<string>();
+  for (const num of all) {
+    if (!known.has(num)) {
+      suffixes.add(num.slice(-4));
+    }
+  }
+  return Array.from(suffixes).slice(0, 10);
+}
+
 export async function importContacts(
   db: D1Database,
   parsed: { name: string; phone: string; normalized: string }[],
