@@ -107,7 +107,7 @@ const defaultHandler = {
       return Response.json({
         count: items.length,
         ai_pending: aiPending,
-        contacts_sync_needed: syncNeeded ? 1 : 0,
+        ...(syncNeeded ? { contacts_sync_needed: 1 } : {}),
         items: items.map((i) => ({
           id: i.id,
           chat_title: i.chat_title,
