@@ -602,6 +602,13 @@ export function renderDashboardPage(params: {
         }
       </ul>
       ${
+        params.contactCount < 20
+          ? `<div class="banner" style="margin-bottom:12px;border-color:var(--accent-border);background:var(--surface-2);">
+               <strong>Heads up:</strong> Group size detection &amp; group replies struggle unless your full <code>Contacts.vcf</code> is uploaded below (auto-sync only pulls 10 recent contacts).
+             </div>`
+          : ""
+      }
+      ${
         !hosted || isPro
           ? ""
           : `<div style="height:6px;background:var(--surface-2);border:1px solid var(--border);margin-bottom:12px;">
