@@ -245,11 +245,7 @@ const defaultHandler = {
         const raw = await request.text();
         items = parseCustomDelimitedMessages(raw);
       }
-      const [stats, unknownNumbers] = await Promise.all([
-        ingestMessages(env.DB, items, apiUser.id),
-        findUnknownMessageNumbers(env.DB, items, apiUser.id),
-      ]);
-      let autoDrafted = 0;
+      const stats = await ingestMessages(env.DB, items, apiUser.id);
       const hosted = isHostedInstance(url.hostname);
       if (
         stats.stored > 0 &&
@@ -271,49 +267,51 @@ const defaultHandler = {
             !isShortCodeOrOtp(sender, recips, body)
           );
         });
-        if (target) {
-          try {
-            const prefs = await getAllPreferences(env.DB, apiUser.id);
-            const styleHint = prefs["texting_style"] ? `Texting style: ${prefs["texting_style"]}.` : "Keep it short, natural, and casual.";
-            const aiRes = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
-              messages: [
-                {
-                  role: "system",
-                  content: `Draft a brief, helpful SMS reply on behalf of the user. ${styleHint} Output ONLY the reply text, no quotes.`,
-                },
-                {
-                  role: "user",
-                  content: `From ${target.sender || target.chat_title}: ${target.body}`,
-                },
-              ],
-            });
-            const draft = (aiRes?.response || "").trim().slice(0, 600);
-            if (draft) {
-              const queued = await queueOutboxItem(
-                env.DB,
-                { ...apiUser, require_approval_default: 1 },
-                {
-                  recipients: (target.recipients || target.chat_title).trim(),
-                  chatTitle: target.chat_title.trim(),
-                  body: draft,
+        if (target && env.AI) {
+          const aiBinding = env.AI;
+          ctx.waitUntil(
+            (async () => {
+              try {
+                const prefs = await getAllPreferences(env.DB, apiUser.id);
+                const styleHint = prefs["texting_style"] ? `Texting style: ${prefs["texting_style"]}.` : "Keep it short, natural, and casual.";
+                const aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+                  messages: [
+                    {
+                      role: "system",
+                      content: `Draft a brief, helpful SMS reply on behalf of the user. ${styleHint} Output ONLY the reply text, no quotes.`,
+                    },
+                    {
+                      role: "user",
+                      content: `From ${target.sender || target.chat_title}: ${target.body}`,
+                    },
+                  ],
+                });
+                const draft = (aiRes?.response || "").trim().slice(0, 600);
+                if (draft) {
+                  const queued = await queueOutboxItem(
+                    env.DB,
+                    { ...apiUser, require_approval_default: 1 },
+                    {
+                      recipients: (target.recipients || target.chat_title).trim(),
+                      chatTitle: target.chat_title.trim(),
+                      body: draft,
+                    }
+                  );
+                  if (queued.ok) {
+                    await recordAutoDraftUsage(env.DB, apiUser.id, AI_UNITS_PER_DRAFT);
+                  }
                 }
-              );
-              if (queued.ok) {
-                await recordAutoDraftUsage(env.DB, apiUser.id, AI_UNITS_PER_DRAFT);
-                autoDrafted = 1;
+              } catch {
+                // Non-fatal
               }
-            }
-          } catch {
-            // Non-fatal: incoming messages are still stored cleanly
-          }
+            })()
+          );
         }
       }
       return Response.json({
         ok: true,
         processed: true,
         ...stats,
-        auto_drafted: autoDrafted,
-        unknown_numbers: unknownNumbers,
       });
     }
 
