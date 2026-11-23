@@ -137,7 +137,7 @@ const LOGO_SVG = `<svg width="24" height="24" viewBox="0 0 128 128" fill="none" 
 
 function layout(title: string, body: string): Response {
   return new Response(
-    `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><!-- Made by Packer Evans --><style>${BASE_CSS}</style></head><body><div class="wrap"><header style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:20px;background:var(--bg);border:1px solid var(--border);"><div style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:0.95rem;letter-spacing:-0.01em;">${LOGO_SVG}<span>AI Text Hub</span></div><button id="themeToggle" class="btn" type="button" style="padding:6px 10px;font-size:0.85rem;" aria-label="Toggle theme">☾</button></header>${body}<div style="margin-top:24px;text-align:right;font-size:11px;opacity:0.42;color:var(--muted);">Made by Packer Evans</div></div><script>(function(){var r=document.documentElement,b=document.getElementById('themeToggle');function a(t){r.setAttribute('data-theme',t);if(b)b.textContent=t==='dark'?'☀':'☾';try{localStorage.setItem('athWorkerTheme',t)}catch{}}var s=null;try{s=localStorage.getItem('athWorkerTheme')}catch{}a(s==='dark'?'dark':'light');if(b)b.addEventListener('click',function(){a(r.getAttribute('data-theme')==='dark'?'light':'dark')});})();</script></body></html>`,
+    `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><!-- Made by Packer Evans --><style>${BASE_CSS}</style></head><body><div class="wrap"><header style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:20px;background:var(--bg);border:1px solid var(--border);gap:10px;flex-wrap:wrap;"><div style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:0.95rem;letter-spacing:-0.01em;">${LOGO_SVG}<span>AI Text Hub</span></div><div style="display:flex;align-items:center;gap:8px;"><a href="https://elevatedcleaning.page/ai_text_hub.html?donate=1" target="_blank" rel="noopener" class="btn" style="padding:6px 12px;font-size:0.82rem;">Buy Me a Coffee</a><button id="themeToggle" class="btn" type="button" style="padding:6px 10px;font-size:0.85rem;" aria-label="Toggle theme">☾</button></div></header>${body}<div style="margin-top:24px;text-align:right;font-size:11px;opacity:0.42;color:var(--muted);">Made by Packer Evans</div></div><script>(function(){var r=document.documentElement,b=document.getElementById('themeToggle');function a(t){r.setAttribute('data-theme',t);if(b)b.textContent=t==='dark'?'☀':'☾';try{localStorage.setItem('athWorkerTheme',t)}catch{}}var s=null;try{s=localStorage.getItem('athWorkerTheme')}catch{}a(s==='dark'?'dark':'light');if(b)b.addEventListener('click',function(){a(r.getAttribute('data-theme')==='dark'?'light':'dark')});})();</script></body></html>`,
     {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
@@ -159,7 +159,11 @@ export function renderSetupPage(error?: string): Response {
     <div class="card">
       <span class="pill">First-Run Setup</span>
       <h1>Create Your Master Password</h1>
-      <p>This Worker is 100% yours. Your password locks this dashboard and acts as your private OAuth 2.1 login when connecting Claude, ChatGPT, or Grok.</p>
+      <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li>This Worker is 100% isolated inside your own Cloudflare account.</li>
+        <li>Your password locks this dashboard.</li>
+        <li>It also acts as your private OAuth 2.1 login for Claude, ChatGPT, or Grok.</li>
+      </ul>
       ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form method="POST" action="/setup">
         <label for="password">Master Password (min 10 characters)</label>
@@ -343,8 +347,17 @@ export function renderDashboardPage(params: {
     </div>
 
     <div class="card">
-      <h2>Step 2 &mdash; Contacts (Optional &mdash; Smarter Name Lookup)</h2>
-      <p><strong>Easiest on iPhone:</strong> Open the <em>Contacts</em> app &rarr; tap <em>Lists</em> (top-left) &rarr; press &amp; hold <em>All Contacts</em> &rarr; <em>Export</em> &rarr; <em>Save to Files</em>, then tap below. Stored strictly in your private D1 database.</p>
+      <h2>Step 2 &mdash; Contacts</h2>
+      <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li><strong>Optional:</strong> AI Text Hub still syncs recent chats and works with phone numbers if you skip this.</li>
+        <li><strong>Easiest on iPhone:</strong>
+          <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
+            <li>Open the <em>Contacts</em> app &rarr; tap <em>Lists</em> at the top-left.</li>
+            <li>Press and hold <em>All Contacts</em> &rarr; tap <em>Export</em> &rarr; <em>Save to Files</em>.</li>
+            <li>Tap the box below to upload your <code>.vcf</code> file into your private D1 database.</li>
+          </ul>
+        </li>
+      </ul>
       <div class="dropzone" id="vcfDrop">
         <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
         <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
@@ -352,16 +365,18 @@ export function renderDashboardPage(params: {
       <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
       <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
         <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-        <input name="name" type="text" placeholder="Quick add name (e.g. Mom)" required style="flex:1;min-width:150px" />
-        <input name="phone" type="text" placeholder="Phone (e.g. +15551234567)" required style="flex:1;min-width:160px" />
+        <input name="name" type="text" placeholder="Quick add name" required style="flex:1;min-width:150px" />
+        <input name="phone" type="text" placeholder="Phone number" required style="flex:1;min-width:160px" />
         <button class="btn" type="submit">Add Contact</button>
       </form>
-      <p style="margin:10px 0 0;font-size:0.84rem">Want to skip this? No problem &mdash; AI Text Hub still syncs recent chats and works with phone numbers or recent chat names.</p>
     </div>
 
     <div class="card">
       <h2>Step 3 &mdash; Copy-Paste Chat Starter Prompt</h2>
-      <p>After connecting your MCP URL in Claude, ChatGPT, or Grok, paste this short prompt. Your Worker's backend automatically supplies the setup interview questions (name priorities, nicknames, texting style).</p>
+      <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li>Connect your MCP URL in Claude, ChatGPT, or Grok.</li>
+        <li>Paste this prompt into a new chat to set your name priorities and texting style.</li>
+      </ul>
       <div class="row">
         <div class="code-box" id="starterPrompt">${esc(starterPrompt)}</div>
         <button class="btn btn-primary" type="button" onclick="copyText('starterPrompt')">Copy Prompt</button>
