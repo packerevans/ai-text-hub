@@ -625,42 +625,35 @@ export function renderDashboardPage(params: {
     </div>
 
     <div class="card">
-      <span class="pill">Automatic</span>
-      <h2 style="margin-top:8px;">Contacts Auto-Sync Active</h2>
-      <ul style="margin:0 0 0 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li><strong>${params.contactCount}</strong> contact(s) currently synced.</li>
-        <li>Your iPhone Shortcut automatically uploads contacts on first run, every 30 days, or whenever your AI cannot find a name.</li>
-      </ul>
+      <span class="pill">Recommended</span>
+      <h2 style="margin-top:8px;">Contacts (${params.contactCount} Synced)</h2>
+      <div class="grid-2" style="align-items:start;">
+        <div>
+          <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+            <li><strong>${params.contactCount}</strong> contact(s) currently synced.</li>
+            <li><strong>Recommended:</strong> Upload your <code>Contacts.vcf</code> below so your AI &amp; Auto-Draft immediately know every name and phone number (your Shortcut also auto-syncs contacts).</li>
+            <li><strong>On iPhone:</strong> Contacts &rarr; 3 bars (top-left) &rarr; hold <em>All Contacts</em> &rarr; Export &rarr; Save to Files.</li>
+          </ul>
+          <div class="dropzone" id="vcfDrop">
+            <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
+            <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
+          </div>
+          <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
+          <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
+            <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+            <input name="name" type="text" placeholder="Quick add name" required style="flex:1;min-width:130px" />
+            <input name="phone" type="text" placeholder="Phone number" required style="flex:1;min-width:140px" />
+            <button class="btn" type="submit">Add Contact</button>
+          </form>
+        </div>
+        <div>
+          ${CONTACTS_ANIM_HTML}
+        </div>
+      </div>
     </div>
 
     <details style="margin-top:16px;">
-      <summary class="btn" style="margin-bottom:14px;">Advanced: Manual Contacts, Endpoints &amp; Settings</summary>
-
-      <div class="card">
-        <h2>Manual Contacts Fallback (.vcf)</h2>
-        <div class="grid-2" style="align-items:start;">
-          <div>
-            <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-              <li>Only needed if you want to pre-load contacts before running the Shortcut.</li>
-              <li><strong>On iPhone:</strong> Contacts &rarr; 3 bars (top-left) &rarr; hold <em>All Contacts</em> &rarr; Export &rarr; Save to Files.</li>
-            </ul>
-            <div class="dropzone" id="vcfDrop">
-              <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
-              <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
-            </div>
-            <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
-            <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
-              <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-              <input name="name" type="text" placeholder="Quick add name" required style="flex:1;min-width:130px" />
-              <input name="phone" type="text" placeholder="Phone number" required style="flex:1;min-width:140px" />
-              <button class="btn" type="submit">Add Contact</button>
-            </form>
-          </div>
-          <div>
-            ${CONTACTS_ANIM_HTML}
-          </div>
-        </div>
-      </div>
+      <summary class="btn" style="margin-bottom:14px;">Advanced: Endpoints &amp; Settings</summary>
 
       <div class="card">
         <h2>Guardrails &amp; Allowlist</h2>

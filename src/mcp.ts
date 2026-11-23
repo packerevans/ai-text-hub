@@ -56,7 +56,12 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
     "Fetch backend setup questions and currently saved user preferences (name priorities, nicknames, texting style). Call this on first setup or when onboarding a new chat.",
     {},
     async () => {
-      const [saved, config] = await Promise.all([getAllPreferences(env.DB, userId), getConfig(env.DB, userId)]);
+      const [saved, config, contactRow] = await Promise.all([
+        getAllPreferences(env.DB, userId),
+        getConfig(env.DB, userId),
+        env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>(),
+      ]);
+      const contactCount = contactRow?.c ?? 0;
       const autoDraftOn = config?.auto_draft_enabled === 1;
       const maxParticipants = Math.min(4, Math.max(1, config?.auto_draft_max_participants ?? 4));
       const dailyUsed = config ? getEffectiveDailyUsage(config) : 0;
@@ -65,15 +70,20 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
         ? [...BASE_ONBOARDING_QUESTIONS, ...AUTO_DRAFT_QUESTIONS]
         : BASE_ONBOARDING_QUESTIONS;
       const missing = activeQuestions.filter((q) => !saved[q.key]);
+      const contactsTip =
+        contactCount === 0
+          ? " IMPORTANT: They have 0 contacts synced yet—encourage them to upload their Contacts.vcf on the dashboard (Contacts -> 3 bars -> hold All Contacts -> Export -> Save to Files -> upload) so you and Auto-Draft can resolve names and numbers immediately!"
+          : ` (${contactCount} contacts synced; mention they can always upload a fresh Contacts.vcf on the dashboard anytime).`;
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify(
               {
-                instructions: autoDraftOn
+                instructions: (autoDraftOn
                   ? `Be upbeat and concise! Give a 1-sentence excited reaction that Auto-Draft is now ON for chats with 1–${maxParticipants} people (${isPro ? "Unlimited $12/yr" : `${dailyUsed}/${DAILY_FREE_AI_LIMIT} credits used today`}), briefly note why tuning helps drafts match their real voice before they hit Send, ask only the unanswered questions below conversationally (never overwhelm them), save answers + a distilled texting_style summary via save_user_preferences, and remind them they can come back anytime to adjust.`
-                  : "Be upbeat, warm, and concise! Start with a 1-sentence overview ('Looks like anytime you open Messages on your iPhone, I can read your chats and queue up texts for you to approve!'). Then ask ONLY the 2 light unanswered questions below conversationally (one step at a time, never overwhelming them): (1) overlapping/family last names to prioritize as you get started, and (2) 3 fun quick sample texts (family, friend, coworker) to learn their style — or let them skip and learn as they go. Save answers + a distilled texting_style via save_user_preferences, and remind them they can always come back to adjust nicknames, style, or schedule anytime.",
+                  : "Be upbeat, warm, and concise! Start with a 1-sentence overview ('Looks like anytime you open Messages on your iPhone, I can read your chats and queue up texts for you to approve!'). Then ask ONLY the 2 light unanswered questions below conversationally (one step at a time, never overwhelming them): (1) overlapping/family last names to prioritize as you get started, and (2) 3 fun quick sample texts (family, friend, coworker) to learn their style — or let them skip and learn as they go. Save answers + a distilled texting_style via save_user_preferences, and remind them they can always come back to adjust nicknames, style, or schedule anytime.") + contactsTip,
+                contact_count: contactCount,
                 auto_draft_status: {
                   enabled: autoDraftOn,
                   max_participants: maxParticipants,
