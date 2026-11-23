@@ -343,13 +343,20 @@ export function renderDashboardPage(params: {
     </div>
 
     <div class="card">
-      <h2>Drop Contacts File (.vcf)</h2>
-      <p>Export your iPhone/iCloud Contacts as a <code>.vcf</code> file and drop it here. Stored strictly in your private D1 database.</p>
+      <h2>Step 2 &mdash; Contacts (Optional &mdash; Smarter Name Lookup)</h2>
+      <p><strong>Easiest on iPhone:</strong> Open the <em>Contacts</em> app &rarr; tap <em>Lists</em> (top-left) &rarr; press &amp; hold <em>All Contacts</em> &rarr; <em>Export</em> &rarr; <em>Save to Files</em>, then tap below. Stored strictly in your private D1 database.</p>
       <div class="dropzone" id="vcfDrop">
-        <strong>Drop <code>Contacts.vcf</code> here</strong> or click to browse
+        <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
         <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
       </div>
       <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
+      <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
+        <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+        <input name="name" type="text" placeholder="Quick add name (e.g. Mom)" required style="flex:1;min-width:150px" />
+        <input name="phone" type="text" placeholder="Phone (e.g. +15551234567)" required style="flex:1;min-width:160px" />
+        <button class="btn" type="submit">Add Contact</button>
+      </form>
+      <p style="margin:10px 0 0;font-size:0.84rem">Want to skip this? No problem &mdash; AI Text Hub still syncs recent chats and works with phone numbers or recent chat names.</p>
     </div>
 
     <div class="card">

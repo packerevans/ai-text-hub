@@ -205,6 +205,26 @@ export function buildMcpServer(env: Env, scopes: string[]) {
       },
       async ({ query, limit }) => {
         const matches = await searchContactsWithPriority(env.DB, query, limit);
+        if (matches.length === 0) {
+          const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts").first<{ c: number }>();
+          if (!totalRow || totalRow.c === 0) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      matches: [],
+                      note: "No contacts uploaded yet (optional). You can still read/reply to recent chats via list_chats or pass a phone number directly to queue_text.",
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+        }
         return {
           content: [
             {
@@ -251,11 +271,16 @@ export function buildMcpServer(env: Env, scopes: string[]) {
           } else {
             const contactMatches = await searchContactsWithPriority(env.DB, resolvedRecipients, 1);
             if (contactMatches.length === 0) {
+              const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts").first<{ c: number }>();
+              const noContactsHint =
+                !totalRow || totalRow.c === 0
+                  ? " Note: no contacts are uploaded yet, so please pass a phone number directly or use a recent chat title from list_chats."
+                  : " Try search_contacts first or pass a phone number.";
               return {
                 content: [
                   {
                     type: "text",
-                    text: `Could not find contact or chat matching "${recipient}". Try search_contacts first or pass a phone number.`,
+                    text: `Could not find contact or chat matching "${recipient}".${noContactsHint}`,
                   },
                 ],
               };

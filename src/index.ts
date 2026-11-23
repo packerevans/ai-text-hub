@@ -127,6 +127,35 @@ const defaultHandler = {
       return Response.json({ ok: true, listening: until > Date.now() ? 1 : 0 });
     }
 
+    if (path === "/api/contacts/sync" && method === "POST") {
+      if (!(await verifyShortcutApiKey(request, env))) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const ct = (request.headers.get("Content-Type") || "").toLowerCase();
+      let parsed: { name: string; phone: string; normalized: string }[] = [];
+      if (ct.includes("application/json")) {
+        const body = (await request.json().catch(() => null)) as
+          | { contacts?: { name?: string; phone?: string }[] }
+          | { name?: string; phone?: string }[]
+          | null;
+        const rawList = Array.isArray(body) ? body : body && Array.isArray(body.contacts) ? body.contacts : [];
+        parsed = rawList
+          .map((c) => {
+            const name = String(c.name || "").trim();
+            const phone = String(c.phone || "").trim();
+            const digits = phone.replace(/\D/g, "");
+            const normalized = digits.length >= 10 ? digits.slice(-10) : digits;
+            return { name, phone, normalized };
+          })
+          .filter((c) => c.name && c.normalized.length >= 7);
+      } else {
+        const vcfText = await request.text();
+        parsed = parseVcf(vcfText);
+      }
+      const imported = await importContacts(env.DB, parsed);
+      return Response.json({ ok: true, imported });
+    }
+
     if (path === "/api/messages" && method === "POST") {
       if (!(await verifyShortcutApiKey(request, env))) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -327,6 +356,26 @@ const defaultHandler = {
       const parsed = parseVcf(vcfText);
       const imported = await importContacts(env.DB, parsed);
       return Response.json({ ok: true, imported });
+    }
+
+    if (path === "/api/contacts/add" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), config.session_secret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const name = String(form.get("name") || "").trim();
+      const phone = String(form.get("phone") || "").trim();
+      const digits = phone.replace(/\D/g, "");
+      const normalized = digits.length >= 10 ? digits.slice(-10) : digits;
+      if (!name || normalized.length < 7) {
+        return renderDashboardFromState(env, url.origin, {
+          notice: "Please enter both a contact name and a valid phone number.",
+        });
+      }
+      await importContacts(env.DB, [{ name, phone, normalized }]);
+      return renderDashboardFromState(env, url.origin, {
+        notice: `Saved contact "${name}" (${phone}).`,
+      });
     }
 
     if (path === "/api/rotate-key" && method === "POST") {
