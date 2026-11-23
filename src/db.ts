@@ -4,7 +4,7 @@ import type { AllowlistRow, ConfigRow, ContactRow, MessageRow, OutboxRow } from 
 const MAX_MESSAGES_PER_CHAT = 6;
 const OUTBOX_LEASE_MS = 90_000;
 const CONTACTS_SYNC_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
-export const DAILY_FREE_AI_LIMIT = 1000;
+export const DAILY_FREE_AI_LIMIT = 2000;
 export const AI_UNITS_PER_DRAFT = 100;
 
 let schemaReady = false;
