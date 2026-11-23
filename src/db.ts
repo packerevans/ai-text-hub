@@ -747,13 +747,24 @@ export async function queueOutboxItem(
     };
   }
 
-  let resolvedRecipients = params.recipients.trim();
-  if (normalizePhone(resolvedRecipients).length < 7) {
-    const contactMatch = (await searchContactsWithPriority(db, resolvedRecipients, 1, config.id))[0];
-    if (contactMatch?.phone) {
-      resolvedRecipients = contactMatch.phone;
+  const rawParts = params.recipients
+    .split(/\s+\+\s+|[,;\n\r]+|\s+&\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const resolvedParts: string[] = [];
+  for (const part of rawParts) {
+    if (normalizePhone(part).length >= 7) {
+      resolvedParts.push(part);
+    } else {
+      const contactMatch = (await searchContactsWithPriority(db, part, 1, config.id))[0];
+      if (contactMatch?.phone) {
+        resolvedParts.push(contactMatch.phone);
+      } else {
+        resolvedParts.push(part);
+      }
     }
   }
+  const resolvedRecipients = resolvedParts.join(",");
   const normRecip = normalizePhone(resolvedRecipients);
   const allowRows = (
     await db.prepare("SELECT * FROM allowlist WHERE user_id = ?").bind(config.id).all<AllowlistRow>()

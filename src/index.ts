@@ -263,12 +263,12 @@ const defaultHandler = {
           const title = (m.chat_title || "").trim();
           const recips = (m.recipients || title).trim();
           const sender = (m.sender || title).trim();
+          const participants = Math.max(countChatParticipants(recips), countChatParticipants(title));
           return (
             m.is_unread &&
             body.length > 0 &&
             body !== "\uFFFC" &&
-            countChatParticipants(recips) <= 4 &&
-            countChatParticipants(title) <= 4 &&
+            participants === 1 &&
             !isShortCodeOrOtp(sender, recips, body)
           );
         });
