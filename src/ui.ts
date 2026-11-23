@@ -11,97 +11,124 @@ function esc(s: string): string {
 
 const BASE_CSS = `
 :root {
-  --bg: #eef2f7;
-  --ink: #0f172a;
-  --muted: #475569;
-  --glass: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(15, 23, 42, 0.10);
-  --accent: #0284c7;
-  --accent-2: #4f46e5;
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --surface-2: #efefef;
+  --ink: #0a0a0a;
+  --muted: #525252;
+  --border: #dcdcdc;
+  --border-strong: #0a0a0a;
+  --accent: #d94e00;
+  --accent-hover: #b84000;
+  --accent-tint: rgba(217, 78, 0, 0.08);
+  --accent-border: rgba(217, 78, 0, 0.45);
+  --grid-line: #e8e8e8;
   --danger: #dc2626;
-  --ok: #059669;
+  --ok: #15803d;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b101b;
-    --ink: #f1f5f9;
-    --muted: #94a3b8;
-    --glass: rgba(22, 30, 48, 0.72);
-    --glass-border: rgba(255, 255, 255, 0.12);
+    --bg: #0a0a0a;
+    --surface: #121212;
+    --surface-2: #1a1a1a;
+    --ink: #ffffff;
+    --muted: #a3a3a3;
+    --border: #262626;
+    --border-strong: #ffffff;
+    --accent: #e05200;
+    --accent-hover: #ff620a;
+    --accent-tint: rgba(224, 82, 0, 0.14);
+    --accent-border: rgba(224, 82, 0, 0.55);
+    --grid-line: rgba(255, 255, 255, 0.04);
   }
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   color: var(--ink);
-  background:
-    radial-gradient(60% 50% at 15% 10%, rgba(14,165,233,0.18), transparent 65%),
-    radial-gradient(50% 45% at 85% 20%, rgba(99,102,241,0.16), transparent 65%),
-    var(--bg);
-  line-height: 1.5;
-  padding: 28px 16px 64px;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  line-height: 1.55;
+  padding: 32px 16px 64px;
+  -webkit-font-smoothing: antialiased;
 }
 .wrap { max-width: 860px; margin: 0 auto; }
 .card {
   position: relative;
-  background: var(--glass);
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
-  border: 1px solid var(--glass-border);
-  border-radius: 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--ink);
+  border-radius: 0;
   padding: 24px;
   margin-bottom: 18px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 12px 32px rgba(15,23,42,0.08);
 }
-h1 { margin: 0 0 8px; font-size: 1.65rem; letter-spacing: -0.02em; }
-h2 { margin: 0 0 12px; font-size: 1.15rem; }
+h1 { margin: 8px 0 8px; font-size: 1.65rem; font-weight: 800; letter-spacing: -0.025em; }
+h2 { margin: 0 0 12px; font-size: 1.15rem; font-weight: 800; letter-spacing: -0.015em; }
 p { margin: 0 0 12px; color: var(--muted); }
-label { display: block; font-weight: 600; font-size: 0.9rem; margin: 12px 0 6px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+label { display: block; font-weight: 700; font-size: 0.88rem; margin: 12px 0 6px; }
 input[type="password"], input[type="text"], input[type="number"], textarea, select {
-  width: 100%; padding: 10px 12px; border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: rgba(255,255,255,0.55); color: var(--ink);
+  width: 100%; padding: 10px 12px; border-radius: 0;
+  border: 1px solid var(--border);
+  background: var(--surface); color: var(--ink);
   font: inherit;
 }
-@media (prefers-color-scheme: dark) {
-  input[type="password"], input[type="text"], input[type="number"], textarea, select {
-    background: rgba(15,23,42,0.55);
-  }
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 .btn {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 10px 16px; border-radius: 12px; border: 1px solid var(--glass-border);
-  background: var(--glass); color: var(--ink); font-weight: 600;
-  cursor: pointer; text-decoration: none; font-size: 0.92rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 18px; border-radius: 0; border: 1px solid var(--border);
+  background: var(--bg); color: var(--ink); font-weight: 700;
+  cursor: pointer; text-decoration: none; font-size: 0.9rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
+.btn:hover { border-color: var(--border-strong); background: var(--surface); }
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff; border-color: transparent;
+  background: var(--accent);
+  color: #fff; border-color: var(--accent);
 }
-.btn-danger { color: var(--danger); }
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.btn-danger { color: var(--danger); border-color: rgba(220, 38, 38, 0.35); }
+.btn-danger:hover { border-color: var(--danger); }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .code-box {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.86rem; padding: 10px 12px; border-radius: 10px;
-  background: rgba(15,23,42,0.07); word-break: break-all; flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem; padding: 10px 12px; border-radius: 0;
+  border: 1px solid var(--border);
+  background: var(--surface); word-break: break-all; flex: 1;
 }
-@media (prefers-color-scheme: dark) { .code-box { background: rgba(255,255,255,0.07); } }
 .banner {
-  padding: 12px 14px; border-radius: 12px; margin-bottom: 16px; font-size: 0.92rem;
-  border: 1px solid rgba(5,150,105,0.3); background: rgba(5,150,105,0.12);
+  padding: 12px 14px; border-radius: 0; margin-bottom: 16px; font-size: 0.9rem;
+  border: 1px solid rgba(21,128,61,0.35); background: rgba(21,128,61,0.1); color: var(--ok);
 }
-.banner.err { border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.12); color: var(--danger); }
+.banner.err { border-color: rgba(220,38,38,0.4); background: rgba(220,38,38,0.1); color: var(--danger); }
 .dropzone {
-  border: 2px dashed var(--glass-border); border-radius: 16px; padding: 26px;
+  border: 2px dashed var(--border); border-radius: 0; padding: 26px;
+  background: var(--surface);
   text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s;
 }
-.dropzone.over { border-color: var(--accent); background: rgba(2,132,199,0.08); }
+.dropzone.over { border-color: var(--accent); background: var(--accent-tint); }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 .pill {
-  display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem;
-  font-weight: 600; background: rgba(2,132,199,0.14); color: var(--accent);
+  display: inline-block; padding: 3px 10px; border-radius: 0; font-size: 0.74rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  background: var(--accent-tint); border: 1px solid var(--accent-border); color: var(--accent);
 }
 `;
 
@@ -260,7 +287,7 @@ export function renderDashboardPage(params: {
 
     ${
       params.freshApiKey
-        ? `<div class="card" style="border-color:rgba(2,132,199,0.45)">
+        ? `<div class="card" style="border-color:var(--accent-border);border-top-color:var(--accent)">
             <span class="pill">Save Now — Shown Once</span>
             <h2>Your New Shortcut API Key</h2>
             <p>Paste this into your iOS Shortcut's Import Question #2. Only its SHA-256 hash is stored in D1.</p>
@@ -274,7 +301,7 @@ export function renderDashboardPage(params: {
 
     ${
       params.freshMcpBearer
-        ? `<div class="card" style="border-color:rgba(99,102,241,0.45)">
+        ? `<div class="card" style="border-color:var(--accent-border);border-top-color:var(--accent)">
             <span class="pill">CLI / Grok Bearer Token — Shown Once</span>
             <h2>Your MCP Bearer Fallback Token</h2>
             <div class="row">
@@ -375,7 +402,7 @@ export function renderDashboardPage(params: {
         if (!el) return;
         navigator.clipboard.writeText(el.textContent.trim()).then(() => {
           const orig = el.style.outline;
-          el.style.outline = '2px solid #0284c7';
+          el.style.outline = '2px solid var(--accent)';
           setTimeout(() => el.style.outline = orig, 700);
         });
       }
