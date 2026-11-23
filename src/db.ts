@@ -127,6 +127,12 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       expires_at INTEGER NOT NULL,
       used_at INTEGER
     )`,
+    `CREATE TABLE IF NOT EXISTS signup_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      email TEXT NOT NULL,
+      signed_up_at INTEGER NOT NULL
+    )`,
   ];
   await db.batch(stmts.map((sql) => db.prepare(sql)));
 
@@ -376,6 +382,31 @@ export async function updateUserPassword(
     .prepare("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?")
     .bind(pwHash, pwSalt, userId)
     .run();
+}
+
+export async function recordSignupLog(
+  db: D1Database,
+  userId: number,
+  email: string,
+  signedUpAt = Date.now()
+): Promise<void> {
+  await ensureSchema(db);
+  await db
+    .prepare("INSERT INTO signup_logs (user_id, email, signed_up_at) VALUES (?, ?, ?)")
+    .bind(userId, email.trim().toLowerCase(), signedUpAt)
+    .run();
+}
+
+export async function listSignupLogs(
+  db: D1Database,
+  limit = 1000
+): Promise<{ id: number; user_id: number; email: string; signed_up_at: number }[]> {
+  await ensureSchema(db);
+  const res = await db
+    .prepare("SELECT id, user_id, email, signed_up_at FROM signup_logs ORDER BY id DESC LIMIT ?")
+    .bind(Math.max(1, Math.min(5000, limit)))
+    .all<{ id: number; user_id: number; email: string; signed_up_at: number }>();
+  return res.results || [];
 }
 
 export async function getUserByApiKeyHash(db: D1Database, apiKeyHash: string): Promise<ConfigRow | null> {

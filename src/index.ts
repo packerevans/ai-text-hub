@@ -37,11 +37,13 @@ import {
   isHostedInstance,
   isShortCodeOrOtp,
   isUserProActive,
+  listSignupLogs,
   markContactsSynced,
   parseCustomDelimitedMessages,
   parseVcf,
   queueOutboxItem,
   recordAutoDraftUsage,
+  recordSignupLog,
   releaseOutboxItem,
   resetAuthRateLimit,
   updateUserPassword,
@@ -453,15 +455,18 @@ const defaultHandler = {
       const { key: apiKey, prefixDisplay } = generateApiKey("ath");
       const apiKeyHash = await sha256Hex(apiKey);
 
+      const now = Date.now();
       const ins = await env.DB.prepare(
         `INSERT INTO users
           (username, email, password_hash, password_salt, session_secret, api_key_hash, api_key_prefix, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-        .bind(email, email, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, Date.now())
+        .bind(email, email, pwHash, pwSalt, sessionSecret, apiKeyHash, prefixDisplay, now)
         .run();
 
       const newId = Number(ins.meta?.last_row_id || 1);
+      await recordSignupLog(env.DB, newId, email, now);
+      console.log(JSON.stringify({ event: "signup", userId: newId, email, signedUpAt: new Date(now).toISOString() }));
       await resetAuthRateLimit(env.DB, ip);
       const cookie = await createSessionCookie(appSecret, newId);
       const resp = await renderDashboardFromState(env, url.origin, newId, appSecret, {
@@ -675,6 +680,23 @@ const defaultHandler = {
       return new Response(null, {
         status: 302,
         headers: { Location: "/login", "Set-Cookie": clearSessionCookie() },
+      });
+    }
+
+    if (path === "/api/admin/signups.log" && method === "GET") {
+      if (sessionUserId !== 1) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      const rows = await listSignupLogs(env.DB, 2000);
+      const lines = rows
+        .map((r) => `${new Date(r.signed_up_at).toISOString()}\t${r.email}\tuser_id=${r.user_id}`)
+        .join("\n");
+      return new Response(lines ? `${lines}\n` : "", {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Disposition": 'inline; filename="signups.log"',
+          "Cache-Control": "no-store",
+        },
       });
     }
 
