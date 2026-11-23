@@ -27,20 +27,21 @@ const BASE_CSS = `
   --ok: #15803d;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0a0a;
-    --surface: #121212;
-    --surface-2: #1a1a1a;
-    --ink: #ffffff;
-    --muted: #a3a3a3;
-    --border: #262626;
-    --border-strong: #ffffff;
-    --accent: #e05200;
-    --accent-hover: #ff620a;
-    --accent-tint: rgba(224, 82, 0, 0.14);
-    --accent-border: rgba(224, 82, 0, 0.55);
-    --grid-line: rgba(255, 255, 255, 0.04);
-  }
+  /* Intentionally light/white by default; toggled via [data-theme="dark"] */
+}
+[data-theme="dark"] {
+  --bg: #0a0a0a;
+  --surface: #121212;
+  --surface-2: #1a1a1a;
+  --ink: #ffffff;
+  --muted: #a3a3a3;
+  --border: #262626;
+  --border-strong: #ffffff;
+  --accent: #e05200;
+  --accent-hover: #ff620a;
+  --accent-tint: rgba(224, 82, 0, 0.14);
+  --accent-border: rgba(224, 82, 0, 0.55);
+  --grid-line: rgba(255, 255, 255, 0.04);
 }
 * { box-sizing: border-box; }
 body {
@@ -132,9 +133,11 @@ input:focus, textarea:focus, select:focus {
 }
 `;
 
+const LOGO_SVG = `<svg width="24" height="24" viewBox="0 0 128 128" fill="none" aria-hidden="true"><path d="M12 20H116V88H56L26 114V88H12V20Z" fill="#D94E00"/><rect x="26" y="34" width="76" height="40" fill="#FFFFFF"/><rect x="36" y="45" width="32" height="6" fill="#0A0A0A"/><rect x="36" y="57" width="56" height="6" fill="#D94E00"/><rect x="76" y="45" width="16" height="6" fill="#0A0A0A"/></svg>`;
+
 function layout(title: string, body: string): Response {
   return new Response(
-    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${BASE_CSS}</style></head><body><div class="wrap">${body}</div></body></html>`,
+    `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><!-- Made by Packer Evans --><style>${BASE_CSS}</style></head><body><div class="wrap"><header style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:20px;background:var(--bg);border:1px solid var(--border);"><div style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:0.95rem;letter-spacing:-0.01em;">${LOGO_SVG}<span>AI Text Hub</span></div><button id="themeToggle" class="btn" type="button" style="padding:6px 10px;font-size:0.85rem;" aria-label="Toggle theme">☾</button></header>${body}<div style="margin-top:24px;text-align:right;font-size:11px;opacity:0.42;color:var(--muted);">Made by Packer Evans</div></div><script>(function(){var r=document.documentElement,b=document.getElementById('themeToggle');function a(t){r.setAttribute('data-theme',t);if(b)b.textContent=t==='dark'?'☀':'☾';try{localStorage.setItem('athWorkerTheme',t)}catch{}}var s=null;try{s=localStorage.getItem('athWorkerTheme')}catch{}a(s==='dark'?'dark':'light');if(b)b.addEventListener('click',function(){a(r.getAttribute('data-theme')==='dark'?'light':'dark')});})();</script></body></html>`,
     {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
