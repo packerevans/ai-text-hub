@@ -645,7 +645,12 @@ const defaultHandler = {
         } satisfies OAuthUserProps,
       });
       await env.OAUTH_KV.delete(`auth_req:${authNonce}`).catch(() => {});
-      return Response.redirect(redirectTo, 302);
+      const safeRedirJson = JSON.stringify(redirectTo);
+      const safeRedirAttr = redirectTo.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+      return new Response(
+        `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Authorized — AI Text Hub</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#fff;color:#0a0a0a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center}a{display:inline-block;margin-top:14px;padding:10px 18px;background:#d94e00;color:#fff;text-decoration:none;font-weight:700}</style></head><body><div><h2>Authorized!</h2><p>Returning to ${clientName.replace(/</g, "&lt;")}...</p><a href="${safeRedirAttr}">Continue &rarr;</a></div><script>window.location.replace(${safeRedirJson});</script></body></html>`,
+        { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
+      );
     }
 
     // ── 5. Authenticated Dashboard & Management Routes ──
