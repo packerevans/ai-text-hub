@@ -323,6 +323,9 @@ export function renderSignupPage(error?: string): Response {
         <li>Pick a username and password.</li>
         <li>You will immediately get your private Shortcut API Key and MCP URL.</li>
       </ul>
+      <div style="padding:10px 12px;margin-bottom:14px;border:1px solid var(--accent-border);background:var(--accent-tint);font-size:0.84rem;color:var(--ink);">
+        <strong>AI Compatibility:</strong> Works free with <strong>Claude</strong>. <strong>ChatGPT</strong> requires Pro/Business and <strong>Grok</strong> requires a paid plan for custom MCP connectors.
+      </div>
       ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form method="POST" action="/signup">
         <label for="username">Username</label>
@@ -414,6 +417,10 @@ export function renderDashboardPage(params: {
 }): Response {
   const mcpUrl = `${params.origin}/mcp`;
   const starterPrompt = `I just connected my private AI Text Hub MCP server. Please run get_onboarding_config to see my setup questions and current preferences, walk me through any unanswered setup questions briefly, and save my preferences.`;
+  const encodedPrompt = encodeURIComponent(starterPrompt);
+  const claudeLaunchUrl = `https://claude.ai/new?q=${encodedPrompt}`;
+  const chatgptLaunchUrl = `https://chatgpt.com/?q=${encodedPrompt}`;
+  const grokLaunchUrl = `https://grok.com/?q=${encodedPrompt}`;
 
   const allowRows = params.allowlist
     .map(
@@ -516,6 +523,21 @@ export function renderDashboardPage(params: {
                  </div>`
           }
         </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="pill">Step 3</span>
+      <h2 style="margin-top:8px;">Launch Your AI With Onboarding Prompt</h2>
+      <ul style="margin:0 0 12px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li>First add <code>${esc(mcpUrl)}</code> in your AI&apos;s connector settings.</li>
+        <li>Then tap a link below to open a new chat with your setup prompt pre-filled:</li>
+      </ul>
+      <div class="row">
+        <a class="btn btn-primary" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
+        <a class="btn" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
+        <a class="btn" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
+        <button class="btn" type="button" onclick="copyText('starterPrompt')">Copy Prompt</button>
       </div>
     </div>
 
