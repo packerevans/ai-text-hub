@@ -5,7 +5,9 @@ import {
   countChatParticipants,
   getAllPreferences,
   getConfig,
+  importContacts,
   listChats,
+  normalizePhone,
   queueOutboxItem,
   readChatMessages,
   requestContactsSync,
@@ -234,6 +236,67 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
                 null,
                 2
               ),
+            },
+          ],
+        };
+      }
+    );
+
+    server.tool(
+      "add_contact",
+      "Save or update a contact (e.g. 'add Devin Hall 8034567321' or 'Devin just messaged me about cars, save him as Devin Hall'). If phone is omitted, searches recent messages by topic or sender to find their number.",
+      {
+        name: z.string().min(1).describe("Full contact name to save (e.g. 'Devin Hall')."),
+        phone: z.string().optional().describe("Phone number if provided by the user."),
+        message_hint: z.string().optional().describe("Optional keyword from a recent message (e.g. 'cars' or 'devin') to auto-find the number when phone is omitted."),
+      },
+      async ({ name, phone, message_hint }) => {
+        let resolvedPhone = (phone || "").trim();
+        let norm = normalizePhone(resolvedPhone);
+        if (norm.length < 7) {
+          const hint = (message_hint || name.split(/\s+/)[0] || "").trim();
+          if (hint) {
+            const like = `%${hint}%`;
+            const row = await env.DB.prepare(
+              `SELECT recipients, sender, chat_title FROM messages
+               WHERE user_id = ? AND (body LIKE ? COLLATE NOCASE OR chat_title LIKE ? COLLATE NOCASE OR sender LIKE ? COLLATE NOCASE)
+               ORDER BY sent_at DESC, id DESC LIMIT 1`
+            )
+              .bind(userId, like, like, like)
+              .first<{ recipients: string; sender: string; chat_title: string }>();
+            if (row) {
+              const candidate = [row.recipients, row.sender, row.chat_title].find(
+                (v) => countChatParticipants(v || "") === 1 && normalizePhone(v || "").length >= 7
+              );
+              if (candidate) {
+                resolvedPhone = candidate.trim();
+                norm = normalizePhone(resolvedPhone);
+              }
+            }
+          }
+        }
+        if (norm.length < 7) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ok: false,
+                  error: "Could not find a valid phone number. Please ask the user for their phone number.",
+                }),
+              },
+            ],
+          };
+        }
+        await importContacts(env.DB, [{ name: name.trim(), phone: resolvedPhone, normalized: norm }], userId);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                saved: { name: name.trim(), phone: resolvedPhone, normalized_phone: norm },
+              }),
             },
           ],
         };
