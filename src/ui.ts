@@ -131,7 +131,121 @@ input:focus, textarea:focus, select:focus {
   font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--accent-tint); border: 1px solid var(--accent-border); color: var(--accent);
 }
+.ca-phone {
+  width: 224px; margin: 0 auto; border: 2px solid var(--ink); background: var(--bg);
+  padding: 8px; position: relative;
+}
+.ca-bar {
+  display: flex; justify-content: space-between; font-size: 9px; font-weight: 700;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px;
+}
+.ca-stage { position: relative; height: 214px; overflow: hidden; font-size: 11px; }
+.ca-scene {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ca-s1 { animation: caS1 8s infinite; }
+.ca-s2 { animation: caS2 8s infinite; }
+.ca-s3 { animation: caS3 8s infinite; }
+.ca-s4 { animation: caS4 8s infinite; }
+@keyframes caS1 { 0%,22% { opacity:1; } 25%,100% { opacity:0; } }
+@keyframes caS2 { 0%,24% { opacity:0; } 25%,47% { opacity:1; } 50%,100% { opacity:0; } }
+@keyframes caS3 { 0%,49% { opacity:0; } 50%,72% { opacity:1; } 75%,100% { opacity:0; } }
+@keyframes caS4 { 0%,74% { opacity:0; } 75%,97% { opacity:1; } 100% { opacity:0; } }
+.ca-home-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; padding-top: 8px; }
+.ca-app {
+  border: 1px solid var(--border); background: var(--surface); padding: 8px 4px;
+  text-align: center; font-size: 9px; font-weight: 700; position: relative;
+}
+.ca-app.focus { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); }
+.ca-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 6px; border: 1px solid var(--border); background: var(--surface); font-weight: 800;
+}
+.ca-ham {
+  display: inline-flex; flex-direction: column; gap: 2px; padding: 3px 4px;
+  border: 1px solid var(--accent); background: var(--accent-tint); position: relative;
+}
+.ca-ham span { display: block; width: 12px; height: 2px; background: var(--accent); }
+.ca-row {
+  padding: 6px 8px; border: 1px solid var(--border); background: var(--bg);
+  display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;
+}
+.ca-row.held {
+  border-color: var(--accent); background: var(--accent-tint); font-weight: 800;
+  transform: scale(0.98);
+}
+.ca-menu {
+  border: 1px solid var(--ink); background: var(--bg); margin-top: 2px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.16);
+}
+.ca-menu-item {
+  padding: 7px 10px; font-size: 10.5px; font-weight: 700; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between;
+}
+.ca-menu-item:last-child { border-bottom: 0; }
+.ca-menu-item.export { background: var(--accent); color: #fff; position: relative; }
+.ca-tap {
+  position: absolute; width: 14px; height: 14px; border-radius: 50%;
+  background: rgba(217,78,0,0.9); border: 2px solid #fff;
+  box-shadow: 0 0 0 4px rgba(217,78,0,0.28);
+  animation: caPulse 1s ease-in-out infinite;
+}
+@keyframes caPulse { 0%,100% { transform: scale(0.9); } 50% { transform: scale(1.18); } }
+.ca-caption {
+  margin-top: auto; font-size: 9.5px; font-weight: 700; text-align: center;
+  padding: 4px; background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+}
 `;
+
+const CONTACTS_ANIM_HTML = `
+<div class="ca-phone" aria-label="Animated guide: Export Contacts from iPhone">
+  <div class="ca-bar"><span>9:41</span><span>Contacts Export</span><span>5G</span></div>
+  <div class="ca-stage">
+    <div class="ca-scene ca-s1">
+      <div class="ca-home-grid">
+        <div class="ca-app">Phone</div>
+        <div class="ca-app focus">Contacts<span class="ca-tap" style="right:4px;bottom:4px;"></span></div>
+        <div class="ca-app">Messages</div>
+        <div class="ca-app">Safari</div>
+        <div class="ca-app">Files</div>
+        <div class="ca-app">Settings</div>
+      </div>
+      <div class="ca-caption">1. Tap the Contacts app</div>
+    </div>
+    <div class="ca-scene ca-s2">
+      <div class="ca-nav">
+        <span class="ca-ham"><span></span><span></span><span></span><span class="ca-tap" style="left:6px;top:4px;"></span></span>
+        <span>All Contacts</span>
+        <span>+</span>
+      </div>
+      <div class="ca-row"><span>Alex Smith</span><span style="opacity:.5;">›</span></div>
+      <div class="ca-row"><span>Cody Miller</span><span style="opacity:.5;">›</span></div>
+      <div class="ca-row"><span>Mom</span><span style="opacity:.5;">›</span></div>
+      <div class="ca-row"><span>Sarah Jones</span><span style="opacity:.5;">›</span></div>
+      <div class="ca-caption">2. Tap the 3 bars at top-left</div>
+    </div>
+    <div class="ca-scene ca-s3">
+      <div class="ca-nav"><span>Lists</span><span style="font-weight:400;opacity:.6;">Edit</span></div>
+      <div class="ca-row held" style="position:relative;">
+        <span>All Contacts</span><span>142</span>
+        <span class="ca-tap" style="left:48%;top:22%;"></span>
+      </div>
+      <div class="ca-row"><span>iCloud</span><span>142</span></div>
+      <div class="ca-row"><span>Gmail</span><span>24</span></div>
+      <div class="ca-caption">3. Press &amp; hold All Contacts</div>
+    </div>
+    <div class="ca-scene ca-s4">
+      <div class="ca-nav"><span>Lists</span><span style="font-weight:400;opacity:.6;">Edit</span></div>
+      <div class="ca-row held"><span>All Contacts</span><span>142</span></div>
+      <div class="ca-menu">
+        <div class="ca-menu-item export"><span>Export</span><span>&rarr;<span class="ca-tap" style="right:18px;top:6px;"></span></span></div>
+        <div class="ca-menu-item"><span>Email All</span><span></span></div>
+      </div>
+      <div class="ca-caption">4. Tap Export &rarr; Save to Files</div>
+    </div>
+  </div>
+</div>`;
 
 const LOGO_SVG = `<svg width="24" height="24" viewBox="0 0 128 128" fill="none" aria-hidden="true"><path d="M12 20H116V88H56L26 114V88H12V20Z" fill="#D94E00"/><rect x="26" y="34" width="76" height="40" fill="#FFFFFF"/><rect x="36" y="45" width="32" height="6" fill="#0A0A0A"/><rect x="36" y="57" width="56" height="6" fill="#D94E00"/><rect x="76" y="45" width="16" height="6" fill="#0A0A0A"/></svg>`;
 
@@ -357,26 +471,34 @@ export function renderDashboardPage(params: {
 
     <div class="card">
       <h2>Import Contacts</h2>
-      <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li><strong>On iPhone:</strong>
-          <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
-            <li>Open the <em>Contacts</em> app &rarr; tap <em>Lists</em> at the top-left.</li>
-            <li>Press and hold <em>All Contacts</em> &rarr; tap <em>Export</em> &rarr; <em>Save to Files</em>.</li>
-            <li>Tap the box below to upload your <code>.vcf</code> file.</li>
+      <div class="grid-2" style="align-items:start;">
+        <div>
+          <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+            <li><strong>On iPhone:</strong>
+              <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
+                <li>Open the <em>Contacts</em> app.</li>
+                <li>Tap the <em>3 bars</em> (Lists) at the top-left.</li>
+                <li>Press and hold <em>All Contacts</em> &rarr; tap <em>Export</em> &rarr; <em>Save to Files</em>.</li>
+                <li>Tap the box below to upload your <code>.vcf</code> file.</li>
+              </ul>
+            </li>
           </ul>
-        </li>
-      </ul>
-      <div class="dropzone" id="vcfDrop">
-        <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
-        <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
+          <div class="dropzone" id="vcfDrop">
+            <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
+            <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
+          </div>
+          <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
+          <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
+            <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+            <input name="name" type="text" placeholder="Quick add name" required style="flex:1;min-width:130px" />
+            <input name="phone" type="text" placeholder="Phone number" required style="flex:1;min-width:140px" />
+            <button class="btn" type="submit">Add Contact</button>
+          </form>
+        </div>
+        <div>
+          ${CONTACTS_ANIM_HTML}
+        </div>
       </div>
-      <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
-      <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
-        <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-        <input name="name" type="text" placeholder="Quick add name" required style="flex:1;min-width:150px" />
-        <input name="phone" type="text" placeholder="Phone number" required style="flex:1;min-width:160px" />
-        <button class="btn" type="submit">Add Contact</button>
-      </form>
     </div>
 
     <details style="margin-top:16px;">
