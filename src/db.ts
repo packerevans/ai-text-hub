@@ -753,12 +753,14 @@ export async function queueOutboxItem(
     .filter(Boolean);
   const resolvedParts: string[] = [];
   for (const part of rawParts) {
-    if (normalizePhone(part).length >= 7) {
-      resolvedParts.push(part);
+    const d = normalizePhone(part);
+    if (d.length >= 7) {
+      resolvedParts.push(d.length === 10 ? `+1${d}` : part.startsWith("+") ? part : `+${d}`);
     } else {
       const contactMatch = (await searchContactsWithPriority(db, part, 1, config.id))[0];
       if (contactMatch?.phone) {
-        resolvedParts.push(contactMatch.phone);
+        const md = normalizePhone(contactMatch.phone);
+        resolvedParts.push(md.length === 10 ? `+1${md}` : contactMatch.phone);
       } else {
         resolvedParts.push(part);
       }
