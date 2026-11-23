@@ -470,39 +470,48 @@ export function renderDashboardPage(params: {
     }
 
     <div class="card">
-      <h2>Import Contacts</h2>
-      <div class="grid-2" style="align-items:start;">
-        <div>
-          <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-            <li><strong>On iPhone:</strong>
-              <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
-                <li>Open the <em>Contacts</em> app.</li>
-                <li>Tap the <em>3 bars</em> (Lists) at the top-left.</li>
-                <li>Press and hold <em>All Contacts</em> &rarr; tap <em>Export</em> &rarr; <em>Save to Files</em>.</li>
-                <li>Tap the box below to upload your <code>.vcf</code> file.</li>
-              </ul>
-            </li>
-          </ul>
-          <div class="dropzone" id="vcfDrop">
-            <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
-            <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
-          </div>
-          <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
-          <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
-            <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-            <input name="name" type="text" placeholder="Quick add name" required style="flex:1;min-width:130px" />
-            <input name="phone" type="text" placeholder="Phone number" required style="flex:1;min-width:140px" />
-            <button class="btn" type="submit">Add Contact</button>
-          </form>
-        </div>
-        <div>
-          ${CONTACTS_ANIM_HTML}
-        </div>
-      </div>
+      <span class="pill">Automatic</span>
+      <h2 style="margin-top:8px;">Contacts Auto-Sync Active</h2>
+      <ul style="margin:0 0 0 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li><strong>${params.contactCount}</strong> contact(s) currently synced.</li>
+        <li>Your iPhone Shortcut automatically uploads contacts on first run, every 30 days, or whenever your AI cannot find a name.</li>
+      </ul>
     </div>
 
     <details style="margin-top:16px;">
-      <summary class="btn" style="margin-bottom:14px;">Advanced: Endpoints, Prompts &amp; Settings</summary>
+      <summary class="btn" style="margin-bottom:14px;">Advanced: Manual Contacts, Endpoints &amp; Settings</summary>
+
+      <div class="card">
+        <h2>Manual Contacts Import (.vcf)</h2>
+        <div class="grid-2" style="align-items:start;">
+          <div>
+            <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+              <li><strong>On iPhone:</strong>
+                <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
+                  <li>Open the <em>Contacts</em> app.</li>
+                  <li>Tap the <em>3 bars</em> (Lists) at the top-left.</li>
+                  <li>Press and hold <em>All Contacts</em> &rarr; tap <em>Export</em> &rarr; <em>Save to Files</em>.</li>
+                  <li>Tap the box below to upload your <code>.vcf</code> file.</li>
+                </ul>
+              </li>
+            </ul>
+            <div class="dropzone" id="vcfDrop">
+              <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
+              <input type="file" id="vcfInput" accept=".vcf,text/vcard" style="display:none" />
+            </div>
+            <p id="vcfStatus" style="margin-top:10px;font-weight:600"></p>
+            <form method="POST" action="/api/contacts/add" class="row" style="margin-top:12px">
+              <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+              <input name="name" type="text" placeholder="Quick add name" required style="flex:1;min-width:130px" />
+              <input name="phone" type="text" placeholder="Phone number" required style="flex:1;min-width:140px" />
+              <button class="btn" type="submit">Add Contact</button>
+            </form>
+          </div>
+          <div>
+            ${CONTACTS_ANIM_HTML}
+          </div>
+        </div>
+      </div>
 
       <div class="card">
         <h2>Endpoints &amp; Keys</h2>

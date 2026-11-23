@@ -8,6 +8,7 @@ import {
   listChats,
   queueOutboxItem,
   readChatMessages,
+  requestContactsSync,
   searchContactsWithPriority,
 } from "./db";
 import type { Env } from "./types";
@@ -206,24 +207,23 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
       async ({ query, limit }) => {
         const matches = await searchContactsWithPriority(env.DB, query, limit, userId);
         if (matches.length === 0) {
-          const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>();
-          if (!totalRow || totalRow.c === 0) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify(
-                    {
-                      matches: [],
-                      note: "No contacts uploaded yet (optional). You can still read/reply to recent chats via list_chats or pass a phone number directly to queue_text.",
-                    },
-                    null,
-                    2
-                  ),
-                },
-              ],
-            };
-          }
+          await requestContactsSync(env.DB, userId);
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    matches: [],
+                    sync_requested: true,
+                    note: "No matching contact found. Requested an automatic contact sync from the user's iPhone on next Messages open (or pass a phone number directly to queue_text).",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
         }
         return {
           content: [
@@ -271,16 +271,12 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
           } else {
             const contactMatches = await searchContactsWithPriority(env.DB, resolvedRecipients, 1, userId);
             if (contactMatches.length === 0) {
-              const totalRow = await env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>();
-              const noContactsHint =
-                !totalRow || totalRow.c === 0
-                  ? " Note: no contacts are uploaded yet, so please pass a phone number directly or use a recent chat title from list_chats."
-                  : " Try search_contacts first or pass a phone number.";
+              await requestContactsSync(env.DB, userId);
               return {
                 content: [
                   {
                     type: "text",
-                    text: `Could not find contact or chat matching "${recipient}".${noContactsHint}`,
+                    text: `Could not find contact or chat matching "${recipient}". Requested an automatic contact sync on next Messages open; you can also pass a phone number directly.`,
                   },
                 ],
               };

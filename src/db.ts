@@ -3,6 +3,7 @@ import type { AllowlistRow, ConfigRow, ContactRow, MessageRow, OutboxRow } from 
 
 const MAX_MESSAGES_PER_CHAT = 6;
 const OUTBOX_LEASE_MS = 90_000;
+const CONTACTS_SYNC_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 
 let schemaReady = false;
 
@@ -714,6 +715,56 @@ export async function getAllPreferences(db: D1Database, userId = 1): Promise<Rec
   const out: Record<string, string> = {};
   for (const r of rows) out[r.key] = r.value;
   return out;
+}
+
+export async function isContactsSyncNeeded(db: D1Database, userId = 1): Promise<boolean> {
+  await ensureSchema(db);
+  const countRow = await db
+    .prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?")
+    .bind(userId)
+    .first<{ c: number }>();
+  if ((countRow?.c ?? 0) === 0) return true;
+
+  const prefs = await getAllPreferences(db, userId);
+  const lastSync = parseInt(prefs["last_contacts_sync_at"] || "0", 10) || 0;
+  const requestedAt = parseInt(prefs["contacts_sync_requested_at"] || "0", 10) || 0;
+  if (requestedAt > lastSync) return true;
+  if (Date.now() - lastSync > CONTACTS_SYNC_INTERVAL_MS) return true;
+  return false;
+}
+
+export async function markContactsSynced(db: D1Database, userId = 1): Promise<void> {
+  await ensureSchema(db);
+  const now = Date.now();
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO user_preferences (user_id, key, value, updated_at)
+         VALUES (?, 'last_contacts_sync_at', ?, ?)
+         ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+      .bind(userId, String(now), now),
+    db
+      .prepare(
+        `INSERT INTO user_preferences (user_id, key, value, updated_at)
+         VALUES (?, 'contacts_sync_requested_at', '0', ?)
+         ON CONFLICT(user_id, key) DO UPDATE SET value = '0', updated_at = excluded.updated_at`
+      )
+      .bind(userId, now),
+  ]);
+}
+
+export async function requestContactsSync(db: D1Database, userId = 1): Promise<void> {
+  await ensureSchema(db);
+  const now = Date.now();
+  await db
+    .prepare(
+      `INSERT INTO user_preferences (user_id, key, value, updated_at)
+       VALUES (?, 'contacts_sync_requested_at', ?, ?)
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    )
+    .bind(userId, String(now), now)
+    .run();
 }
 
 export async function searchContactsWithPriority(

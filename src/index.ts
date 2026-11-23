@@ -25,6 +25,8 @@ import {
   getUserCount,
   importContacts,
   ingestMessages,
+  isContactsSyncNeeded,
+  markContactsSynced,
   parseCustomDelimitedMessages,
   parseVcf,
   releaseOutboxItem,
@@ -114,13 +116,33 @@ const defaultHandler = {
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const row = await env.DB.prepare(
-        "SELECT value FROM user_preferences WHERE user_id = ? AND key = 'ai_listening_until'"
-      )
-        .bind(apiUser.id)
-        .first<{ value: string }>();
+      const [row, syncNeeded] = await Promise.all([
+        env.DB.prepare(
+          "SELECT value FROM user_preferences WHERE user_id = ? AND key = 'ai_listening_until'"
+        )
+          .bind(apiUser.id)
+          .first<{ value: string }>(),
+        isContactsSyncNeeded(env.DB, apiUser.id),
+      ]);
       const until = row ? parseInt(row.value, 10) || 0 : 0;
-      return Response.json({ ok: true, listening: until > Date.now() ? 1 : 0 });
+      return Response.json({
+        ok: true,
+        listening: until > Date.now() ? 1 : 0,
+        contacts_sync_needed: syncNeeded ? 1 : 0,
+      });
+    }
+
+    if (path === "/api/contacts/sync-needed" && method === "GET") {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const needed = await isContactsSyncNeeded(env.DB, apiUser.id);
+      return Response.json({
+        ok: true,
+        needed,
+        contacts_sync_needed: needed ? 1 : 0,
+      });
     }
 
     if (path === "/api/ai-status" && method === "POST") {
@@ -150,24 +172,29 @@ const defaultHandler = {
       let parsed: { name: string; phone: string; normalized: string }[] = [];
       if (ct.includes("application/json")) {
         const body = (await request.json().catch(() => null)) as
-          | { contacts?: { name?: string; phone?: string }[] }
+          | { contacts?: { name?: string; phone?: string }[]; text?: string }
           | { name?: string; phone?: string }[]
           | null;
-        const rawList = Array.isArray(body) ? body : body && Array.isArray(body.contacts) ? body.contacts : [];
-        parsed = rawList
-          .map((c) => {
-            const name = String(c.name || "").trim();
-            const phone = String(c.phone || "").trim();
-            const digits = phone.replace(/\D/g, "");
-            const normalized = digits.length >= 10 ? digits.slice(-10) : digits;
-            return { name, phone, normalized };
-          })
-          .filter((c) => c.name && c.normalized.length >= 7);
+        if (body && !Array.isArray(body) && typeof body.text === "string") {
+          parsed = parseVcf(body.text);
+        } else {
+          const rawList = Array.isArray(body) ? body : body && Array.isArray(body.contacts) ? body.contacts : [];
+          parsed = rawList
+            .map((c) => {
+              const name = String(c.name || "").trim();
+              const phone = String(c.phone || "").trim();
+              const digits = phone.replace(/\D/g, "");
+              const normalized = digits.length >= 10 ? digits.slice(-10) : digits;
+              return { name, phone, normalized };
+            })
+            .filter((c) => c.name && c.normalized.length >= 7);
+        }
       } else {
         const vcfText = await request.text();
         parsed = parseVcf(vcfText);
       }
       const imported = await importContacts(env.DB, parsed, apiUser.id);
+      await markContactsSynced(env.DB, apiUser.id);
       return Response.json({ ok: true, imported });
     }
 
@@ -436,6 +463,7 @@ const defaultHandler = {
       const vcfText = await request.text();
       const parsed = parseVcf(vcfText);
       const imported = await importContacts(env.DB, parsed, activeUser.id);
+      await markContactsSynced(env.DB, activeUser.id);
       return Response.json({ ok: true, imported });
     }
 
@@ -454,6 +482,7 @@ const defaultHandler = {
         });
       }
       await importContacts(env.DB, [{ name, phone, normalized }], activeUser.id);
+      await markContactsSynced(env.DB, activeUser.id);
       return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
         notice: `Saved contact "${name}" (${phone}).`,
       });
