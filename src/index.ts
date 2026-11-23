@@ -17,6 +17,7 @@ import {
   AI_UNITS_PER_DRAFT,
   checkAuthRateLimit,
   claimPendingOutbox,
+  claimStripeSessionOnce,
   countChatParticipants,
   DAILY_FREE_AI_LIMIT,
   ensureSchema,
@@ -184,6 +185,10 @@ const defaultHandler = {
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
+      const len = parseInt(request.headers.get("Content-Length") || "0", 10);
+      if (len > 2 * 1024 * 1024) {
+        return Response.json({ error: "Payload too large (max 2MB)" }, { status: 413 });
+      }
       const ct = (request.headers.get("Content-Type") || "").toLowerCase();
       let parsed: { name: string; phone: string; normalized: string }[] = [];
       if (ct.includes("application/json")) {
@@ -218,6 +223,10 @@ const defaultHandler = {
       const apiUser = await verifyShortcutApiKey(request, env);
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const len = parseInt(request.headers.get("Content-Length") || "0", 10);
+      if (len > 512 * 1024) {
+        return Response.json({ error: "Payload too large (max 512KB)" }, { status: 413 });
       }
       const ct = (request.headers.get("Content-Type") || "").toLowerCase();
       let items: IncomingMessageInput[] = [];
@@ -354,10 +363,13 @@ const defaultHandler = {
 
     if (path === "/signup" && method === "POST") {
       const ip = getClientIp(request);
-      if (!(await checkAuthRateLimit(env.DB, ip))) {
-        return renderSignupPage("Too many attempts. Try again in 15 minutes.");
+      if (!(await checkAuthRateLimit(env.DB, `signup:${ip}`, 5, 60 * 60 * 1000))) {
+        return renderSignupPage("Too many signups from this network. Try again in an hour.");
       }
       const form = await request.formData();
+      if (String(form.get("website") || "").trim() !== "") {
+        return renderSignupPage("Unable to process signup.");
+      }
       const email = String(form.get("email") || form.get("username") || "").trim().toLowerCase();
       const password = String(form.get("password") || "");
       const confirm = String(form.get("confirm") || "");
@@ -393,7 +405,10 @@ const defaultHandler = {
         try {
           await fetch("https://elevatedcleaning.page/api/ai-text-hub/signup-log", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(env.SIGNUP_LOG_SECRET ? { "X-Signup-Log-Secret": env.SIGNUP_LOG_SECRET } : {}),
+            },
             body: JSON.stringify({ userId: newId, email, signedUpAt: now }),
           });
         } catch {
@@ -422,7 +437,9 @@ const defaultHandler = {
       const next = String(form.get("next") || "/dashboard");
       const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
 
-      if (!(await checkAuthRateLimit(env.DB, ip))) {
+      const ipOk = await checkAuthRateLimit(env.DB, ip);
+      const acctOk = identifier ? await checkAuthRateLimit(env.DB, `acct:${identifier}`) : true;
+      if (!ipOk || !acctOk) {
         return renderLoginPage("Too many failed attempts. Wait 15 minutes.", safeNext);
       }
 
@@ -431,6 +448,7 @@ const defaultHandler = {
         return renderLoginPage("Incorrect email or password.", safeNext);
       }
       await resetAuthRateLimit(env.DB, ip);
+      if (identifier) await resetAuthRateLimit(env.DB, `acct:${identifier}`);
       const cookie = await createSessionCookie(appSecret, user.id);
       return new Response(null, {
         status: 302,
@@ -492,7 +510,9 @@ const defaultHandler = {
           error: "Session expired. Please try again.",
         });
       }
-      if (!(await checkAuthRateLimit(env.DB, ip))) {
+      const ipOk = await checkAuthRateLimit(env.DB, ip);
+      const acctOk = identifier ? await checkAuthRateLimit(env.DB, `acct:${identifier}`) : true;
+      if (!ipOk || !acctOk) {
         return renderOAuthAuthorizePage({
           clientName,
           csrfToken: await createCsrfToken(appSecret),
@@ -512,6 +532,7 @@ const defaultHandler = {
 
       await env.OAUTH_KV.delete(`auth_req:${authNonce}`);
       await resetAuthRateLimit(env.DB, ip);
+      if (identifier) await resetAuthRateLimit(env.DB, `acct:${identifier}`);
       const finalScopes = scopes.length > 0 ? scopes : ["messages:read", "contacts:read"];
       const userKey = oauthUserKey(user.id);
       const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
@@ -658,6 +679,12 @@ const defaultHandler = {
           );
           const data = (await verifyRes.json()) as { ok?: boolean };
           if (data?.ok) {
+            const firstClaim = await claimStripeSessionOnce(env.DB, sessionId, activeUser.id);
+            if (!firstClaim) {
+              return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+                notice: "This checkout session was already redeemed.",
+              });
+            }
             const proUntil = Date.now() + 366 * 24 * 60 * 60 * 1000;
             await env.DB.prepare("UPDATE users SET is_pro = 1, pro_until = ?, auto_draft_enabled = 1 WHERE id = ?")
               .bind(proUntil, activeUser.id)

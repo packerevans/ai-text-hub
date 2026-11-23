@@ -7,6 +7,7 @@ export interface Env {
   AI?: {
     run(model: string, input: unknown): Promise<{ response?: string }>;
   };
+  SIGNUP_LOG_SECRET?: string;
 }
 
 export interface ConfigRow {

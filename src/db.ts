@@ -126,6 +126,11 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       email TEXT NOT NULL,
       signed_up_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS redeemed_sessions (
+      session_id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      redeemed_at INTEGER NOT NULL
+    )`,
   ];
   await db.batch(stmts.map((sql) => db.prepare(sql)));
 
@@ -355,6 +360,19 @@ export async function listSignupLogs(
     .bind(Math.max(1, Math.min(5000, limit)))
     .all<{ id: number; user_id: number; email: string; signed_up_at: number }>();
   return res.results || [];
+}
+
+export async function claimStripeSessionOnce(
+  db: D1Database,
+  sessionId: string,
+  userId: number
+): Promise<boolean> {
+  await ensureSchema(db);
+  const res = await db
+    .prepare("INSERT OR IGNORE INTO redeemed_sessions (session_id, user_id, redeemed_at) VALUES (?, ?, ?)")
+    .bind(sessionId, userId, Date.now())
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
 }
 
 export async function getUserByApiKeyHash(db: D1Database, apiKeyHash: string): Promise<ConfigRow | null> {

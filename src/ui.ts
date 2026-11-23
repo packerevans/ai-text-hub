@@ -329,6 +329,7 @@ export function renderSignupPage(error?: string): Response {
       </div>
       ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form method="POST" action="/signup">
+        <input type="text" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0;height:0;width:0;pointer-events:none;" />
         <label for="email">Email</label>
         <input id="email" name="email" type="email" maxlength="120" placeholder="you@example.com" required autocomplete="email" />
         <label for="password">Password (min 10 characters)</label>
