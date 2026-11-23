@@ -356,40 +356,13 @@ export function renderDashboardPage(params: {
     }
 
     <div class="card">
-      <h2>Step 1 &mdash; Your Private Endpoints &amp; Keys</h2>
-      <div class="grid-2">
-        <div>
-          <label>Worker URL (Shortcut Import Question #1)</label>
-          <div class="row">
-            <div class="code-box" id="workerUrl">${esc(params.origin)}</div>
-            <button class="btn" type="button" onclick="copyText('workerUrl')">Copy</button>
-          </div>
-        </div>
-        <div>
-          <label>Remote MCP URL (Claude / ChatGPT / Grok)</label>
-          <div class="row">
-            <div class="code-box" id="mcpUrl">${esc(mcpUrl)}</div>
-            <button class="btn" type="button" onclick="copyText('mcpUrl')">Copy</button>
-          </div>
-        </div>
-      </div>
-      <div class="row" style="margin-top:14px;justify-content:space-between">
-        <div style="font-size:.9rem;color:var(--muted)">Active Shortcut Key: <code>${esc(params.config.api_key_prefix)}</code></div>
-        <form method="POST" action="/api/rotate-key" style="margin:0">
-          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-          <button class="btn" type="submit">Rotate Shortcut API Key</button>
-        </form>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Step 2 &mdash; Contacts</h2>
+      <h2>Import Contacts</h2>
       <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li><strong>Easiest on iPhone:</strong>
+        <li><strong>On iPhone:</strong>
           <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
             <li>Open the <em>Contacts</em> app &rarr; tap <em>Lists</em> at the top-left.</li>
             <li>Press and hold <em>All Contacts</em> &rarr; tap <em>Export</em> &rarr; <em>Save to Files</em>.</li>
-            <li>Tap the box below to upload your <code>.vcf</code> file into your private D1 database.</li>
+            <li>Tap the box below to upload your <code>.vcf</code> file.</li>
           </ul>
         </li>
       </ul>
@@ -406,55 +379,86 @@ export function renderDashboardPage(params: {
       </form>
     </div>
 
-    <div class="card">
-      <h2>Step 3 &mdash; Copy-Paste Chat Starter Prompt</h2>
-      <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li>Connect your MCP URL in Claude, ChatGPT, or Grok.</li>
-        <li>Paste this prompt into a new chat to set your name priorities and texting style.</li>
-      </ul>
-      <div class="row">
-        <div class="code-box" id="starterPrompt">${esc(starterPrompt)}</div>
-        <button class="btn btn-primary" type="button" onclick="copyText('starterPrompt')">Copy Prompt</button>
+    <details style="margin-top:16px;">
+      <summary class="btn" style="margin-bottom:14px;">Advanced: Endpoints, Prompts &amp; Settings</summary>
+
+      <div class="card">
+        <h2>Endpoints &amp; Keys</h2>
+        <div class="grid-2">
+          <div>
+            <label>Worker URL</label>
+            <div class="row">
+              <div class="code-box" id="workerUrl">${esc(params.origin)}</div>
+              <button class="btn" type="button" onclick="copyText('workerUrl')">Copy</button>
+            </div>
+          </div>
+          <div>
+            <label>Remote MCP URL</label>
+            <div class="row">
+              <div class="code-box" id="mcpUrl">${esc(mcpUrl)}</div>
+              <button class="btn" type="button" onclick="copyText('mcpUrl')">Copy</button>
+            </div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:14px;justify-content:space-between">
+          <div style="font-size:.9rem;color:var(--muted)">Active Shortcut Key: <code>${esc(params.config.api_key_prefix)}</code></div>
+          <form method="POST" action="/api/rotate-key" style="margin:0">
+            <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+            <button class="btn" type="submit">Rotate Shortcut API Key</button>
+          </form>
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Guardrails &amp; Allowlist</h2>
-      <form method="POST" action="/api/settings" class="grid-2" style="margin-bottom:16px">
-        <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-        <div>
-          <label for="hourly_send_cap">Max Outbound Texts / Hour</label>
-          <input id="hourly_send_cap" name="hourly_send_cap" type="number" min="1" max="100" value="${params.config.hourly_send_cap}" />
-        </div>
-        <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:6px">
-          <label style="margin:0;font-weight:400"><input type="checkbox" name="allowlist_only" value="1" ${params.config.allowlist_only ? "checked" : ""} /> Block sends outside allowlist</label>
-          <label style="margin:0;font-weight:400"><input type="checkbox" name="require_approval_default" value="1" ${params.config.require_approval_default ? "checked" : ""} /> Require iPhone tap approval by default</label>
-          <button class="btn btn-primary" type="submit" style="margin-top:6px;width:fit-content">Save Guardrails</button>
-        </div>
-      </form>
-      <form method="POST" action="/api/allowlist/add" class="row" style="margin-bottom:12px">
-        <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-        <select name="target_type" style="width:auto"><option value="phone">Phone</option><option value="chat">Group / Chat Title</option></select>
-        <input name="target_value" type="text" placeholder="+15551234567 or Family Chat" required style="flex:1;min-width:180px" />
-        <input name="label" type="text" placeholder="Label (optional)" style="width:160px" />
-        <button class="btn" type="submit">Add</button>
-      </form>
-      ${allowRows || "<p>No allowlist entries yet.</p>"}
-    </div>
-
-    <div class="card">
-      <h2>Connected AI Clients (OAuth 2.1)</h2>
-      ${grantRows}
-      <hr style="border:none;border-top:1px solid var(--glass-border);margin:16px 0" />
-      <form method="POST" action="/api/mcp-bearer" class="row" style="justify-content:space-between">
-        <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-        <div style="font-size:.9rem;color:var(--muted)">Optional Static MCP Bearer Fallback (for CLI / Grok API): <strong>${params.config.mcp_bearer_enabled ? "Enabled" : "Disabled"}</strong></div>
+      <div class="card">
+        <h2>Chat Starter Prompt</h2>
+        <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+          <li>Connect your MCP URL in Claude, ChatGPT, or Grok.</li>
+          <li>Paste this prompt into a new chat to set your name priorities and texting style.</li>
+        </ul>
         <div class="row">
-          <button class="btn" name="action" value="generate" type="submit">Generate / Enable</button>
-          ${params.config.mcp_bearer_enabled ? `<button class="btn btn-danger" name="action" value="disable" type="submit">Disable</button>` : ""}
+          <div class="code-box" id="starterPrompt">${esc(starterPrompt)}</div>
+          <button class="btn btn-primary" type="button" onclick="copyText('starterPrompt')">Copy Prompt</button>
         </div>
-      </form>
-    </div>
+      </div>
+
+      <div class="card">
+        <h2>Guardrails &amp; Allowlist</h2>
+        <form method="POST" action="/api/settings" class="grid-2" style="margin-bottom:16px">
+          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+          <div>
+            <label for="hourly_send_cap">Max Outbound Texts / Hour</label>
+            <input id="hourly_send_cap" name="hourly_send_cap" type="number" min="1" max="100" value="${params.config.hourly_send_cap}" />
+          </div>
+          <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:6px">
+            <label style="margin:0;font-weight:400"><input type="checkbox" name="allowlist_only" value="1" ${params.config.allowlist_only ? "checked" : ""} /> Block sends outside allowlist</label>
+            <label style="margin:0;font-weight:400"><input type="checkbox" name="require_approval_default" value="1" ${params.config.require_approval_default ? "checked" : ""} /> Require iPhone tap approval by default</label>
+            <button class="btn btn-primary" type="submit" style="margin-top:6px;width:fit-content">Save Guardrails</button>
+          </div>
+        </form>
+        <form method="POST" action="/api/allowlist/add" class="row" style="margin-bottom:12px">
+          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+          <select name="target_type" style="width:auto"><option value="phone">Phone</option><option value="chat">Group / Chat Title</option></select>
+          <input name="target_value" type="text" placeholder="+15551234567 or Family Chat" required style="flex:1;min-width:180px" />
+          <input name="label" type="text" placeholder="Label (optional)" style="width:160px" />
+          <button class="btn" type="submit">Add</button>
+        </form>
+        ${allowRows || "<p>No allowlist entries yet.</p>"}
+      </div>
+
+      <div class="card">
+        <h2>Connected AI Clients (OAuth 2.1)</h2>
+        ${grantRows}
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0" />
+        <form method="POST" action="/api/mcp-bearer" class="row" style="justify-content:space-between">
+          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+          <div style="font-size:.9rem;color:var(--muted)">Optional Static MCP Bearer Fallback (for CLI / Grok API): <strong>${params.config.mcp_bearer_enabled ? "Enabled" : "Disabled"}</strong></div>
+          <div class="row">
+            <button class="btn" name="action" value="generate" type="submit">Generate / Enable</button>
+            ${params.config.mcp_bearer_enabled ? `<button class="btn btn-danger" name="action" value="disable" type="submit">Disable</button>` : ""}
+          </div>
+        </form>
+      </div>
+    </details>
 
     <script>
       function copyText(id) {
