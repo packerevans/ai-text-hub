@@ -290,6 +290,7 @@ const defaultHandler = {
           const styleHint = prefs["texting_style"]
             ? `Texting style: ${prefs["texting_style"]}.`
             : "Keep it short, natural, and casual.";
+          let draftDebug = "ok";
           const draftOne = async (target: IncomingMessageInput) => {
             try {
               const aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", {
@@ -305,22 +306,27 @@ const defaultHandler = {
                 ],
               });
               const draft = (aiRes?.response || "").trim().slice(0, 600);
-              if (draft) {
-                const queued = await queueOutboxItem(
-                  env.DB,
-                  { ...apiUser, require_approval_default: 1 },
-                  {
-                    recipients: (target.recipients || target.chat_title).trim(),
-                    chatTitle: target.chat_title.trim(),
-                    body: draft,
-                  }
-                );
-                if (queued.ok) {
-                  await recordAutoDraftUsage(env.DB, apiUser.id, AI_UNITS_PER_DRAFT);
-                }
+              if (!draft) {
+                draftDebug = "empty_ai_response";
+                return;
               }
-            } catch {
-              // Non-fatal
+              const queued = await queueOutboxItem(
+                env.DB,
+                { ...apiUser, require_approval_default: 1 },
+                {
+                  recipients: (target.recipients || target.chat_title).trim(),
+                  chatTitle: target.chat_title.trim(),
+                  body: draft,
+                }
+              );
+              if (queued.ok) {
+                await recordAutoDraftUsage(env.DB, apiUser.id, AI_UNITS_PER_DRAFT);
+              } else {
+                draftDebug = `queue_blocked:${queued.error}`;
+              }
+            } catch (err) {
+              draftDebug = `ai_err:${err instanceof Error ? err.message : String(err)}`;
+              console.error("[AUTO_DRAFT_ERR]", draftDebug);
             }
           };
 
