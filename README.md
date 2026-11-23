@@ -32,15 +32,13 @@ A 100% private, single-user AI Text Automation Hub running on **Cloudflare Worke
 4. Create your **Master Password** (minimum 10 characters).
 5. Copy your **Worker URL** and **Shortcut API Key** (`ath_...`).
 
-### 3. Add Contacts (Optional)
+### 3. Add Contacts
 - **On iPhone:**
   - Open the **Contacts** app → tap **Lists** at the top-left.
   - Press and hold **All Contacts** → tap **Export** → **Save to Files**.
   - Tap the upload box in your Worker dashboard and select the `.vcf` file.
 - **Or Quick-Add:**
   - Use the **Add Contact** form in your dashboard to add top contacts one by one.
-- **Or Skip:**
-  - Recent chats and phone numbers still work without uploading contacts.
 
 ### 4. Install the iPhone Shortcut
 1. Open the iCloud Shortcut on your iPhone:

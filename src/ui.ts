@@ -349,7 +349,6 @@ export function renderDashboardPage(params: {
     <div class="card">
       <h2>Step 2 &mdash; Contacts</h2>
       <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li><strong>Optional:</strong> AI Text Hub still syncs recent chats and works with phone numbers if you skip this.</li>
         <li><strong>Easiest on iPhone:</strong>
           <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
             <li>Open the <em>Contacts</em> app &rarr; tap <em>Lists</em> at the top-left.</li>
