@@ -381,7 +381,7 @@ export function renderOAuthAuthorizePage(params: {
     <div class="card" style="max-width:520px;margin:32px auto;">
       <span class="pill">OAuth 2.1 Remote MCP</span>
       <h1>Connect ${esc(params.clientName)}</h1>
-      <p>Enter your Master Password to grant <strong>${esc(params.clientName)}</strong> scoped access to your private AI Text Hub.</p>
+      <p>Enter your username and password to grant <strong>${esc(params.clientName)}</strong> scoped access to your private AI Text Hub.</p>
       ${params.error ? `<div class="banner err">${esc(params.error)}</div>` : ""}
       <form method="POST" action="/authorize">
         <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
@@ -432,7 +432,7 @@ export function renderDashboardPage(params: {
   const allowRows = params.allowlist
     .map(
       (a) => `
-      <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--glass-border)">
+      <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
         <div><strong>${esc(a.label || a.target_value)}</strong> <span class="pill">${esc(a.target_type)}</span> <span style="color:var(--muted);font-size:.85rem">${esc(a.target_value)}</span></div>
         <form method="POST" action="/api/allowlist/delete" style="margin:0">
           <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
@@ -449,7 +449,7 @@ export function renderDashboardPage(params: {
       : params.grants
           .map(
             (g) => `
-        <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--glass-border)">
+        <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
           <div><strong>${esc(g.clientId)}</strong> <span style="color:var(--muted);font-size:.82rem">(${esc(g.scope.join(", "))})</span></div>
           <form method="POST" action="/api/clients/revoke" style="margin:0">
             <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
@@ -474,20 +474,6 @@ export function renderDashboardPage(params: {
     ${params.notice ? `<div class="banner">${esc(params.notice)}</div>` : ""}
 
     ${
-      params.freshApiKey
-        ? `<div class="card" style="border-color:var(--accent-border);border-top-color:var(--accent)">
-            <span class="pill">Save Now — Shown Once</span>
-            <h2>Your New Shortcut API Key</h2>
-            <p>Paste this into your iOS Shortcut's Import Question #2. Only its SHA-256 hash is stored in D1.</p>
-            <div class="row">
-              <div class="code-box" id="freshKey">${esc(params.freshApiKey)}</div>
-              <button class="btn btn-primary" type="button" onclick="copyText('freshKey')">Copy Key</button>
-            </div>
-          </div>`
-        : ""
-    }
-
-    ${
       params.freshMcpBearer
         ? `<div class="card" style="border-color:var(--accent-border);border-top-color:var(--accent)">
             <span class="pill">CLI / Grok Bearer Token — Shown Once</span>
@@ -501,23 +487,27 @@ export function renderDashboardPage(params: {
     }
 
     <div class="card">
-      <span class="pill">Ready</span>
-      <h2 style="margin-top:8px;">Install iPhone Shortcut</h2>
+      <span class="pill">Step 1</span>
+      <h2 style="margin-top:8px;">Install iPhone Shortcut &amp; Automation</h2>
       <div class="grid-2" style="align-items:center;">
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
           <div style="width:132px;height:132px;padding:8px;background:#fff;border:1px solid var(--border);">${SHORTCUT_QR_SVG}</div>
           <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
             <a class="btn btn-primary" href="${SHORTCUT_ICLOUD_URL}" target="_blank" rel="noopener">Add iOS Shortcut &rarr;</a>
-            <span style="font-size:0.82rem;color:var(--muted);">Scan QR or tap button, then paste the 2 values on the right.</span>
+            <ul style="margin:0 0 0 16px;font-size:0.8rem;color:var(--muted);display:flex;flex-direction:column;gap:2px;">
+              <li>Scan QR or tap button, then paste Prompt 1 &amp; 2.</li>
+              <li>In Shortcuts &rarr; Automation &rarr; +: <strong>Messages &rarr; Is Opened &rarr; Next &rarr; Run Immediately &rarr; AI Text Hub</strong>.</li>
+              <li>Run the Shortcut once to sync your contacts.</li>
+            </ul>
           </div>
         </div>
         <div>
-          <label style="margin-top:0;">1. Worker URL</label>
+          <label style="margin-top:0;">Prompt 1: Worker URL</label>
           <div class="row">
             <div class="code-box" id="dashWorkerUrl">${esc(params.origin)}</div>
             <button class="btn" type="button" onclick="copyText('dashWorkerUrl')">Copy</button>
           </div>
-          <label>2. Shortcut API Key</label>
+          <label>Prompt 2: Shortcut API Key</label>
           ${
             params.freshApiKey
               ? `<div class="row">
@@ -534,18 +524,25 @@ export function renderDashboardPage(params: {
     </div>
 
     <div class="card">
-      <span class="pill">Step 3</span>
-      <h2 style="margin-top:8px;">Launch Your AI With Onboarding Prompt</h2>
-      <ul style="margin:0 0 12px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li>First add <code>${esc(mcpUrl)}</code> in your AI&apos;s connector settings.</li>
-        <li>Then tap a 1-click link below (pre-fills the prompt) or copy the message:</li>
+      <span class="pill">Step 2</span>
+      <h2 style="margin-top:8px;">Connect Your AI</h2>
+      <ul style="margin:0 0 10px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+        <li><strong>Claude (Free Works):</strong> Settings &rarr; Connectors &rarr; Add Custom Connector.</li>
+        <li><strong>ChatGPT (Pro / Team):</strong> Settings &rarr; Apps &rarr; Developer Mode ON &rarr; Create App.</li>
+        <li><strong>Grok (Paid):</strong> <code>grok.com/connectors</code> &rarr; New Connector &rarr; Custom.</li>
       </ul>
+      <label style="margin-top:0;">Remote MCP URL</label>
+      <div class="row" style="margin-bottom:12px;">
+        <div class="code-box" id="mcpUrl">${esc(mcpUrl)}</div>
+        <button class="btn" type="button" onclick="copyText('mcpUrl')">Copy URL</button>
+      </div>
+      <label style="margin-top:0;">Onboarding Starter Message</label>
       <div class="code-box" id="starterPromptMain" style="margin-bottom:10px;">${esc(starterPrompt)}</div>
       <div class="row">
         <a class="btn btn-primary" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
         <a class="btn" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
         <a class="btn" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
-        <button class="btn" type="button" onclick="copyText('starterPromptMain')">Copy Prompt</button>
+        <button class="btn" type="button" onclick="copyText('starterPromptMain')">Copy Message</button>
       </div>
     </div>
 
@@ -562,7 +559,7 @@ export function renderDashboardPage(params: {
         <li>Drafts replies for new unread texts using built-in Cloudflare AI (approval menu still required before sending).</li>
         ${
           hosted
-            ? `<li>Daily usage: <strong>${isPro ? "Unlimited ($10/yr Plan Active)" : `${dailyUsed} / ${DAILY_FREE_AI_LIMIT} units`}</strong></li>`
+            ? `<li>Daily usage: <strong>${isPro ? "Unlimited ($7/yr Plan Active)" : `${dailyUsed} / ${DAILY_FREE_AI_LIMIT} units`}</strong></li>`
             : `<li>Runs on your own Cloudflare Workers AI allowance (10,000 free Neurons/day).</li>`
         }
       </ul>
@@ -572,7 +569,7 @@ export function renderDashboardPage(params: {
           : `<div style="height:6px;background:var(--surface-2);border:1px solid var(--border);margin-bottom:12px;">
                <div style="height:100%;width:${usagePct}%;background:var(--accent);"></div>
              </div>
-             <a class="btn" href="${upgradeUrl}">Upgrade to Unlimited ($10/year) &rarr;</a>`
+             <a class="btn" href="${upgradeUrl}">Upgrade to Unlimited ($7/year) &rarr;</a>`
       }
     </div>
 
@@ -589,18 +586,12 @@ export function renderDashboardPage(params: {
       <summary class="btn" style="margin-bottom:14px;">Advanced: Manual Contacts, Endpoints &amp; Settings</summary>
 
       <div class="card">
-        <h2>Manual Contacts Import (.vcf)</h2>
+        <h2>Manual Contacts Fallback (.vcf)</h2>
         <div class="grid-2" style="align-items:start;">
           <div>
             <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-              <li><strong>On iPhone:</strong>
-                <ul style="margin:4px 0 0 18px;display:flex;flex-direction:column;gap:2px;">
-                  <li>Open the <em>Contacts</em> app.</li>
-                  <li>Tap the <em>3 bars</em> (Lists) at the top-left.</li>
-                  <li>Press and hold <em>All Contacts</em> &rarr; tap <em>Export</em> &rarr; <em>Save to Files</em>.</li>
-                  <li>Tap the box below to upload your <code>.vcf</code> file.</li>
-                </ul>
-              </li>
+              <li>Only needed if you want to pre-load contacts before running the Shortcut.</li>
+              <li><strong>On iPhone:</strong> Contacts &rarr; 3 bars (top-left) &rarr; hold <em>All Contacts</em> &rarr; Export &rarr; Save to Files.</li>
             </ul>
             <div class="dropzone" id="vcfDrop">
               <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
@@ -617,45 +608,6 @@ export function renderDashboardPage(params: {
           <div>
             ${CONTACTS_ANIM_HTML}
           </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Endpoints &amp; Keys</h2>
-        <div class="grid-2">
-          <div>
-            <label>Worker URL</label>
-            <div class="row">
-              <div class="code-box" id="workerUrl">${esc(params.origin)}</div>
-              <button class="btn" type="button" onclick="copyText('workerUrl')">Copy</button>
-            </div>
-          </div>
-          <div>
-            <label>Remote MCP URL</label>
-            <div class="row">
-              <div class="code-box" id="mcpUrl">${esc(mcpUrl)}</div>
-              <button class="btn" type="button" onclick="copyText('mcpUrl')">Copy</button>
-            </div>
-          </div>
-        </div>
-        <div class="row" style="margin-top:14px;justify-content:space-between">
-          <div style="font-size:.9rem;color:var(--muted)">Active Shortcut Key: <code>${esc(params.config.api_key_prefix)}</code></div>
-          <form method="POST" action="/api/rotate-key" style="margin:0">
-            <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-            <button class="btn" type="submit">Rotate Shortcut API Key</button>
-          </form>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Chat Starter Prompt</h2>
-        <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-          <li>Connect your MCP URL in Claude, ChatGPT, or Grok.</li>
-          <li>Paste this prompt into a new chat to set your name priorities and texting style.</li>
-        </ul>
-        <div class="row">
-          <div class="code-box" id="starterPrompt">${esc(starterPrompt)}</div>
-          <button class="btn btn-primary" type="button" onclick="copyText('starterPrompt')">Copy Prompt</button>
         </div>
       </div>
 

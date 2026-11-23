@@ -35,22 +35,22 @@ A 100% private, AI Text Automation Hub running on **Cloudflare Workers + D1 + KV
 ### 3. Install the iPhone Shortcut
 1. Open the iCloud Shortcut on your iPhone:
    - [Add AI Text Hub iOS Shortcut](https://www.icloud.com/shortcuts/8e7b000abbf347aeb54316e2be691d0b)
-2. Paste your **Worker URL** into Prompt #1.
-3. Paste your **Shortcut API Key** into Prompt #2.
+2. Replace the pre-filled URL in Import Question #1 with your own `https://ai-text-hub.<your-subdomain>.workers.dev` URL.
+3. Paste your **Shortcut API Key** into Import Question #2.
 4. Open **Apple Shortcuts** → **Automation** tab → tap **+**:
-   - Choose **App** → select **Messages** → **Is Opened**.
-   - Enable **Run Immediately**.
-   - Select **AI Text Hub** as the action.
-5. Contacts sync automatically on first run, every 30 days, and whenever your AI cannot find a contact.
+   - Choose **App** → select **Messages** → **Is Opened** → tap **Next**.
+   - Enable **Run Immediately** and select **AI Text Hub**.
+5. Run the Shortcut once (or open **Messages**) to sync your contacts and recent unread texts before connecting your AI.
 
 ### 4. Connect Claude, ChatGPT, or Grok
 1. Open your AI client's connector settings:
-   - **Claude:** Settings → Connectors → Add Custom Connector.
-   - **ChatGPT:** Settings → Apps/Plugins → Advanced → turn **Developer Mode ON**, then click **Create App**.
+   - **Claude (Free Works):** Settings → Connectors → Add Custom Connector.
+   - **ChatGPT (Pro / Team):** Settings → Apps/Plugins → Advanced → turn **Developer Mode ON**, then click **Create App**.
+   - **Grok (Paid):** `grok.com/connectors` → New Connector → Custom.
 2. Add your Remote MCP URL:
    - `https://ai-text-hub.<your-subdomain>.workers.dev/mcp`
 3. Select **OAuth** and sign in on your Worker's `/authorize` screen using your username and password.
-4. Paste the **Starter Prompt** from your dashboard into a new chat to set your name priorities and texting style.
+4. Use your dashboard's **Open in Claude / ChatGPT / Grok** button (or paste the Starter Prompt) to set your name priorities and texting style.
 
 ---
 
@@ -68,7 +68,7 @@ npm run dev
   - iOS Shortcut uses a dedicated revocable `Authorization: Bearer <ath_...>` key stored as a SHA-256 hash.
   - Remote MCP uses **OAuth 2.1 + PKCE + DCR** via `@cloudflare/workers-oauth-provider` with per-client revocation.
 - **2FA protection:**
-  - Automatically drops 5–6 digit OTP verification codes before they leave your phone.
+  - The Worker automatically drops 4–6 digit short codes and OTP verification messages before they are stored or exposed to your AI.
 - **Prompt-injection defense:**
   - `read_chat` wraps incoming SMS content in `<untrusted_sms_content>` delimiters.
   - Outbound `queue_text` enforces your allowlist and hourly send cap.

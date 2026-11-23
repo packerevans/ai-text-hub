@@ -610,7 +610,7 @@ const defaultHandler = {
               .bind(proUntil, activeUser.id)
               .run();
             return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
-              notice: "Unlimited Auto-Draft AI ($10/yr) is now active on your account!",
+              notice: "Unlimited Auto-Draft AI ($7/yr) is now active on your account!",
             });
           }
         } catch {}
