@@ -111,6 +111,7 @@ const defaultHandler = {
         ...(syncNeeded ? { contacts_sync_needed: 1 } : {}),
         items: items.map((i) => ({
           id: i.id,
+          recipient: i.recipients || i.chat_title,
           chat_title: i.chat_title,
           recipients: i.recipients,
           body: i.body,
@@ -297,6 +298,13 @@ const defaultHandler = {
         else if (body && "messages" in body && Array.isArray(body.messages)) items = body.messages;
         else if (body && "text" in body && typeof body.text === "string") items = parseCustomDelimitedMessages(body.text);
         else if (body && "body" in body) items = [body as IncomingMessageInput];
+        items = items.map((it) => {
+          const rec = (it as IncomingMessageInput & { recipient?: string }).recipient;
+          if (rec && !it.chat_title && !it.recipients) {
+            return { ...it, chat_title: rec, recipients: rec, sender: it.sender || rec };
+          }
+          return it;
+        });
       } else {
         const raw = await request.text();
         rawForDebug = raw;

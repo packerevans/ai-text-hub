@@ -538,10 +538,11 @@ export interface IncomingMessageInput {
 export function parseCustomDelimitedMessages(raw: string): IncomingMessageInput[] {
   const out: IncomingMessageInput[] = [];
   const blocks = raw
-    .split(/\)\s*(?=\(<chat)/)
+    .split(/\)\s*(?=\(<(?:chat|recipient))/i)
     .map((b) => b.trim().replace(/^\(/, "").replace(/\)$/, ""));
   for (const block of blocks) {
-    const chat = (block.match(/<chat\s*=\s*([^>]+)>/) || [])[1]?.trim() || "";
+    const recipientTag = (block.match(/<recipient\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
+    const chat = (block.match(/<chat\s*=\s*([^>]+)>/i) || [])[1]?.trim() || recipientTag;
     if (!chat) continue;
     const msgMatch = block.match(/<message\s*=([\s\S]*?)>\s*\n?\s*<date/);
     const body = (msgMatch ? msgMatch[1] : "").trim();
@@ -550,12 +551,12 @@ export function parseCustomDelimitedMessages(raw: string): IncomingMessageInput[
     const recips = (block.match(/<recipients\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
     const number = (block.match(/<number\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
     const senderTag = (block.match(/<sender\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
-    const recipients = recips || number || chat;
+    const recipients = recips || number || recipientTag || chat;
     if (!body || body === "\uFFFC") continue;
     out.push({
       chat_title: chat,
       recipients,
-      sender: senderTag || chat,
+      sender: senderTag || recipientTag || chat,
       body,
       sent_at: date,
       is_unread: read.toLowerCase() === "no",
