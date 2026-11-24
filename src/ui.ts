@@ -1,5 +1,5 @@
 import { DAILY_FREE_AI_LIMIT, getEffectiveDailyUsage, isHostedInstance, isUserProActive } from "./db";
-import type { AllowlistRow, ConfigRow } from "./types";
+import type { ConfigRow } from "./types";
 
 function esc(s: string): string {
   return s
@@ -459,7 +459,7 @@ export function renderDashboardPage(params: {
   contactCount: number;
   chatCount: number;
   pendingOutbox: number;
-  allowlist: AllowlistRow[];
+  contacts: { id: number; name: string; phone: string }[];
   grants: { id: string; clientId: string; scope: string[]; createdAt?: number }[];
   freshApiKey?: string;
   freshMcpBearer?: string;
@@ -480,15 +480,15 @@ export function renderDashboardPage(params: {
   const usagePct = isPro ? 100 : Math.min(100, Math.round((dailyUsed / DAILY_FREE_AI_LIMIT) * 100));
   const upgradeUrl = `https://elevatedcleaning.page/api/ai-text-hub/upgrade?user=${encodeURIComponent(params.config.username || "admin")}&return=${encodeURIComponent(params.origin)}`;
 
-  const allowRows = params.allowlist
+  const contactRows = params.contacts
     .map(
-      (a) => `
-      <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div><strong>${esc(a.label || a.target_value)}</strong> <span class="pill">${esc(a.target_type)}</span> <span style="color:var(--muted);font-size:.85rem">${esc(a.target_value)}</span></div>
-        <form method="POST" action="/api/allowlist/delete" style="margin:0">
+      (c) => `
+      <div class="row contact-row" data-filter="${esc((c.name + " " + c.phone).toLowerCase())}" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div><strong>${esc(c.name)}</strong> <span style="color:var(--muted);font-size:.85rem">${esc(c.phone)}</span></div>
+        <form method="POST" action="/api/contacts/delete" style="margin:0">
           <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-          <input type="hidden" name="id" value="${a.id}" />
-          <button class="btn btn-danger" type="submit">Remove</button>
+          <input type="hidden" name="id" value="${c.id}" />
+          <button class="btn btn-danger" type="submit">Delete</button>
         </form>
       </div>`
     )
@@ -886,27 +886,26 @@ export function renderDashboardPage(params: {
       <summary class="btn" style="margin-bottom:14px;">Advanced: Endpoints &amp; Settings</summary>
 
       <div class="card">
-        <h2>Guardrails &amp; Allowlist</h2>
-        <form method="POST" action="/api/settings" class="grid-2" style="margin-bottom:16px">
+        <h2>Guardrails</h2>
+        <form method="POST" action="/api/settings" class="grid-2">
           <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
           <div>
             <label for="hourly_send_cap">Max Outbound Texts / Hour</label>
             <input id="hourly_send_cap" name="hourly_send_cap" type="number" min="1" max="100" value="${params.config.hourly_send_cap}" />
           </div>
           <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:6px">
-            <label style="margin:0;font-weight:400"><input type="checkbox" name="allowlist_only" value="1" ${params.config.allowlist_only ? "checked" : ""} /> Block sends outside allowlist</label>
             <label style="margin:0;font-weight:400"><input type="checkbox" name="require_approval_default" value="1" ${params.config.require_approval_default ? "checked" : ""} /> Require iPhone tap approval by default</label>
             <button class="btn btn-primary" type="submit" style="margin-top:6px;width:fit-content">Save Guardrails</button>
           </div>
         </form>
-        <form method="POST" action="/api/allowlist/add" class="row" style="margin-bottom:12px">
-          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-          <select name="target_type" style="width:auto"><option value="phone">Phone</option><option value="chat">Group / Chat Title</option></select>
-          <input name="target_value" type="text" placeholder="+15551234567 or Family Chat" required style="flex:1;min-width:180px" />
-          <input name="label" type="text" placeholder="Label (optional)" style="width:160px" />
-          <button class="btn" type="submit">Add</button>
-        </form>
-        ${allowRows || "<p>No allowlist entries yet.</p>"}
+      </div>
+
+      <div class="card">
+        <h2>Manage Contacts (${params.contactCount})</h2>
+        <input type="text" placeholder="Filter contacts by name or phone..." oninput="filterContacts(this.value)" style="margin-bottom:10px" />
+        <div id="contactList" style="max-height:260px;overflow-y:auto;">
+          ${contactRows || "<p>No contacts saved yet.</p>"}
+        </div>
       </div>
 
       <div class="card">
@@ -980,6 +979,12 @@ export function renderDashboardPage(params: {
         if (wizGoal === 'autodraft' && next === 2) next = dir > 0 ? 3 : 1;
         if (wizGoal === 'autodraft' && (next === 5 || next === 6)) next = dir > 0 ? 7 : 4;
         showWizStep(next);
+      }
+      function filterContacts(q) {
+        var needle = (q || '').toLowerCase().trim();
+        document.querySelectorAll('.contact-row').forEach(function(el){
+          el.style.display = !needle || el.getAttribute('data-filter').indexOf(needle) !== -1 ? 'flex' : 'none';
+        });
       }
       function finishSetup(scrollContacts) {
         try { localStorage.setItem(wizDoneKey, '1'); } catch (e) {}

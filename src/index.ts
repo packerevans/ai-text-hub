@@ -802,6 +802,22 @@ const defaultHandler = {
       });
     }
 
+    if (path === "/api/contacts/delete" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const id = parseInt(String(form.get("id") || "0"), 10);
+      if (id > 0) {
+        await env.DB.prepare("DELETE FROM contacts WHERE id = ? AND user_id = ?")
+          .bind(id, activeUser.id)
+          .run();
+      }
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+        notice: "Contact deleted.",
+      });
+    }
+
     if (path === "/api/rotate-key" && method === "POST") {
       const form = await request.formData();
       if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
@@ -906,12 +922,11 @@ const defaultHandler = {
         return new Response("Invalid CSRF", { status: 403 });
       }
       const cap = Math.min(100, Math.max(1, parseInt(String(form.get("hourly_send_cap") || "10"), 10) || 10));
-      const allowOnly = form.get("allowlist_only") === "1" ? 1 : 0;
       const reqApp = form.get("require_approval_default") === "1" ? 1 : 0;
       await env.DB.prepare(
-        "UPDATE users SET hourly_send_cap = ?, allowlist_only = ?, require_approval_default = ? WHERE id = ?"
+        "UPDATE users SET hourly_send_cap = ?, allowlist_only = 0, require_approval_default = ? WHERE id = ?"
       )
-        .bind(cap, allowOnly, reqApp, activeUser.id)
+        .bind(cap, reqApp, activeUser.id)
         .run();
       return Response.redirect(`${url.origin}/dashboard`, 302);
     }
@@ -975,11 +990,13 @@ async function renderDashboardFromState(
   extra?: { freshApiKey?: string; freshMcpBearer?: string; notice?: string }
 ): Promise<Response> {
   const config = (await getConfig(env.DB, userId))!;
-  const [contacts, chats, outbox, allowlistRes, grantsRes, csrfToken] = await Promise.all([
+  const [contacts, chats, outbox, contactsListRes, grantsRes, csrfToken] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>(),
     env.DB.prepare("SELECT COUNT(DISTINCT chat_key) as c FROM messages WHERE user_id = ?").bind(userId).first<{ c: number }>(),
     env.DB.prepare("SELECT COUNT(*) as c FROM outbox WHERE user_id = ?").bind(userId).first<{ c: number }>(),
-    env.DB.prepare("SELECT * FROM allowlist WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all<AllowlistRow>(),
+    env.DB.prepare("SELECT id, name, phone FROM contacts WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT 200")
+      .bind(userId)
+      .all<{ id: number; name: string; phone: string }>(),
     env.OAUTH_PROVIDER.listUserGrants(oauthUserKey(userId)),
     createCsrfToken(appSecret),
   ]);
@@ -991,7 +1008,7 @@ async function renderDashboardFromState(
     contactCount: contacts?.c ?? 0,
     chatCount: chats?.c ?? 0,
     pendingOutbox: outbox?.c ?? 0,
-    allowlist: allowlistRes.results || [],
+    contacts: contactsListRes.results || [],
     grants: (grantsRes.items || []).map((g) => ({
       id: g.id,
       clientId: g.clientId,
