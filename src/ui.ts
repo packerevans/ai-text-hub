@@ -545,10 +545,10 @@ export function renderDashboardPage(params: {
     <div id="setupWizard" style="display:${showWizardByDefault ? "block" : "none"};">
       <div class="card">
         <div class="row" style="justify-content:space-between;margin-bottom:8px;">
-          <span class="pill" id="wizStepPill">Step 1 of 6</span>
+          <span class="pill" id="wizStepPill">Step 1 of 7</span>
           <span style="font-size:0.8rem;color:var(--muted);" id="wizStepLabel">Choose Your Goal</span>
         </div>
-        <div class="wiz-prog"><div class="wiz-prog-bar" id="wizProgBar" style="width:16.6%;"></div></div>
+        <div class="wiz-prog"><div class="wiz-prog-bar" id="wizProgBar" style="width:14.3%;"></div></div>
 
         <!-- WIZARD STEP 1: GOAL -->
         <div class="wiz-pane" data-step="1">
@@ -681,8 +681,23 @@ export function renderDashboardPage(params: {
           </div>
         </div>
 
-        <!-- WIZARD STEP 6: CELEBRATION & OPTIONAL EXTRAS -->
+        <!-- WIZARD STEP 6: LAUNCH & TEACH AGENT -->
         <div class="wiz-pane" data-step="6" style="display:none;">
+          <h2>Start Your AI Agent</h2>
+          <p>Now that your connector is added, tap your AI below to open a chat and run the quick 1-minute setup (optional &mdash; you can also just start texting anytime).</p>
+          <div class="wiz-box" style="padding:14px;">
+            <strong>Launch Agent Setup Chat:</strong>
+            <div class="row" style="margin-top:10px;">
+              <a class="btn btn-primary" data-ai-btn="claude" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
+              <a class="btn" data-ai-btn="chatgpt" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
+              <a class="btn" data-ai-btn="grok" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
+            </div>
+            <p style="font-size:0.82rem;color:var(--muted);margin:10px 0 0;">This pre-fills a short prompt so your AI asks a few quick questions about your texting style (you can say <em>"skip"</em> to any of them).</p>
+          </div>
+        </div>
+
+        <!-- WIZARD STEP 7: CELEBRATION & OPTIONAL EXTRAS -->
+        <div class="wiz-pane" data-step="7" style="display:none;">
           <h2>You're All Set! 🎉</h2>
           <p>Your iPhone &amp; AI are ready. These last two extras are <strong>optional</strong> — you can turn them on now or anytime on your dashboard.</p>
           <div class="grid-2" style="align-items:start;">
@@ -921,7 +936,8 @@ export function renderDashboardPage(params: {
         3: 'Add iPhone Shortcut',
         4: 'Set Messages Automation',
         5: 'Connect Your AI',
-        6: 'All Set!'
+        6: 'Start Your Agent',
+        7: 'All Set!'
       };
       function pickGoal(g, el) {
         wizGoal = g;
@@ -947,22 +963,22 @@ export function renderDashboardPage(params: {
         });
       }
       function showWizStep(s) {
-        wizStep = Math.max(1, Math.min(6, s));
+        wizStep = Math.max(1, Math.min(7, s));
         document.querySelectorAll('.wiz-pane').forEach(function(p){
           p.style.display = Number(p.getAttribute('data-step')) === wizStep ? 'block' : 'none';
         });
-        document.getElementById('wizStepPill').textContent = 'Step ' + wizStep + ' of 6';
+        document.getElementById('wizStepPill').textContent = 'Step ' + wizStep + ' of 7';
         document.getElementById('wizStepLabel').textContent = wizLabels[wizStep] || '';
-        document.getElementById('wizProgBar').style.width = ((wizStep / 6) * 100) + '%';
+        document.getElementById('wizProgBar').style.width = ((wizStep / 7) * 100) + '%';
         document.getElementById('wizBackBtn').style.visibility = wizStep > 1 ? 'visible' : 'hidden';
-        document.getElementById('wizNextBtn').textContent = wizStep === 6 ? 'Go to Dashboard \u2192' : 'Next \u2192';
-        if (wizStep === 5) renderAiStep();
+        document.getElementById('wizNextBtn').textContent = wizStep === 7 ? 'Go to Dashboard \u2192' : 'Next \u2192';
+        if (wizStep === 5 || wizStep === 6) renderAiStep();
       }
       function wizNav(dir) {
-        if (dir === 1 && wizStep === 6) { finishSetup(false); return; }
+        if (dir === 1 && wizStep === 7) { finishSetup(false); return; }
         var next = wizStep + dir;
         if (wizGoal === 'autodraft' && next === 2) next = dir > 0 ? 3 : 1;
-        if (wizGoal === 'autodraft' && next === 5) next = dir > 0 ? 6 : 4;
+        if (wizGoal === 'autodraft' && (next === 5 || next === 6)) next = dir > 0 ? 7 : 4;
         showWizStep(next);
       }
       function finishSetup(scrollContacts) {
