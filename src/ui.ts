@@ -545,10 +545,10 @@ export function renderDashboardPage(params: {
     <div id="setupWizard" style="display:${showWizardByDefault ? "block" : "none"};">
       <div class="card">
         <div class="row" style="justify-content:space-between;margin-bottom:8px;">
-          <span class="pill" id="wizStepPill">Step 1 of 7</span>
+          <span class="pill" id="wizStepPill">Step 1 of 9</span>
           <span style="font-size:0.8rem;color:var(--muted);" id="wizStepLabel">Choose Your Goal</span>
         </div>
-        <div class="wiz-prog"><div class="wiz-prog-bar" id="wizProgBar" style="width:14.3%;"></div></div>
+        <div class="wiz-prog"><div class="wiz-prog-bar" id="wizProgBar" style="width:11.1%;"></div></div>
 
         <!-- WIZARD STEP 1: GOAL -->
         <div class="wiz-pane" data-step="1">
@@ -654,8 +654,53 @@ export function renderDashboardPage(params: {
           </div>
         </div>
 
-        <!-- WIZARD STEP 5: CONNECT AI -->
+        <!-- WIZARD STEP 5: CONTACTS -->
         <div class="wiz-pane" data-step="5" style="display:none;">
+          <h2 id="wizContactsTitle">Upload Your Contacts</h2>
+          <p id="wizContactsDesc">Auto-Draft needs your contacts so it knows who is texting you. On iPhone: <strong>Contacts &rarr; &lt; Lists (top-left) &rarr; press &amp; hold All Contacts &rarr; Export &rarr; Save to Files</strong>.</p>
+          <div class="grid-2" style="align-items:start;">
+            <div>
+              <div class="dropzone" id="wizVcfDrop">
+                <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
+                <input type="file" id="wizVcfInput" accept=".vcf,text/vcard" style="display:none" />
+              </div>
+              <p id="wizVcfStatus" style="margin-top:10px;font-weight:600">${params.contactCount > 0 ? `${params.contactCount} contact(s) already synced.` : ""}</p>
+            </div>
+            <div>
+              ${CONTACTS_ANIM_HTML}
+            </div>
+          </div>
+        </div>
+
+        <!-- WIZARD STEP 6: AUTO-DRAFT -->
+        <div class="wiz-pane" data-step="6" style="display:none;">
+          <h2>Turn On Auto-Draft Replies</h2>
+          <p>Automatically drafts replies for 1&ndash;4 person chats whenever Messages opens (2,000 free credits/day, $12/yr Unlimited).</p>
+          <div class="wiz-box" style="padding:14px;">
+            <form method="POST" action="/api/auto-draft/toggle" style="margin:0;" onsubmit="saveWizResume()">
+              <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+              ${
+                autoDraftOn
+                  ? `<div class="row" style="justify-content:space-between;">
+                       <strong>Auto-Draft is ON &#10003;</strong>
+                       <button class="btn" type="submit">Turn OFF</button>
+                     </div>`
+                  : `<div class="row">
+                       <select name="max_participants" style="width:auto;">
+                         <option value="1">1 person</option>
+                         <option value="2">1&ndash;2 people</option>
+                         <option value="3">1&ndash;3 people</option>
+                         <option value="4" selected>1&ndash;4 people (Preset)</option>
+                       </select>
+                       <button class="btn btn-primary" type="submit">Turn Auto-Draft ON</button>
+                     </div>`
+              }
+            </form>
+          </div>
+        </div>
+
+        <!-- WIZARD STEP 7: CONNECT AI -->
+        <div class="wiz-pane" data-step="7" style="display:none;">
           <h2>Connect Your AI</h2>
           <div class="grid-2" style="align-items:start;">
             <div>
@@ -681,8 +726,8 @@ export function renderDashboardPage(params: {
           </div>
         </div>
 
-        <!-- WIZARD STEP 6: LAUNCH & TEACH AGENT -->
-        <div class="wiz-pane" data-step="6" style="display:none;">
+        <!-- WIZARD STEP 8: LAUNCH & TEACH AGENT -->
+        <div class="wiz-pane" data-step="8" style="display:none;">
           <h2>Start Your AI Agent</h2>
           <p>Now that your connector is added, tap your AI below to open a chat and run the quick 1-minute setup (optional &mdash; you can also just start texting anytime).</p>
           <div class="wiz-box" style="padding:14px;">
@@ -696,36 +741,16 @@ export function renderDashboardPage(params: {
           </div>
         </div>
 
-        <!-- WIZARD STEP 7: CELEBRATION & OPTIONAL EXTRAS -->
-        <div class="wiz-pane" data-step="7" style="display:none;">
+        <!-- WIZARD STEP 9: CELEBRATION -->
+        <div class="wiz-pane" data-step="9" style="display:none;">
           <h2>You're All Set! 🎉</h2>
-          <p>Your iPhone &amp; AI are ready. These last two extras are <strong>optional</strong> — you can turn them on now or anytime on your dashboard.</p>
-          <div class="grid-2" style="align-items:start;">
-            <div class="wiz-box" style="padding:14px;">
-              <strong>Optional: Auto-Draft Replies</strong>
-              <p style="font-size:0.84rem;margin:6px 0 10px;">Automatically drafts replies for 1&ndash;4 person chats (2,000 free credits/day, $12/yr Unlimited).</p>
-              <form method="POST" action="/api/auto-draft/toggle" style="margin:0;">
-                <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-                ${
-                  autoDraftOn
-                    ? `<button class="btn btn-primary" type="submit">Auto-Draft: ON</button>`
-                    : `<div class="row">
-                         <select name="max_participants" style="width:auto;">
-                           <option value="1">1 person</option>
-                           <option value="2">1&ndash;2 people</option>
-                           <option value="3">1&ndash;3 people</option>
-                           <option value="4" selected>1&ndash;4 people (Preset)</option>
-                         </select>
-                         <button class="btn btn-primary" type="submit">Turn Auto-Draft ON</button>
-                       </div>`
-                }
-              </form>
-            </div>
-            <div class="wiz-box" style="padding:14px;">
-              <strong>Optional: Upload Contacts.vcf</strong>
-              <p style="font-size:0.82rem;margin:6px 0 8px;">Auto-Sync already grabs your 10 newest contacts. For all contacts: <strong>Contacts &rarr; &lt; Lists (top-left) &rarr; hold All Contacts &rarr; Export &rarr; Save to Files</strong>.</p>
-              <button class="btn" type="button" onclick="finishSetup(true)">Upload Contacts on Dashboard</button>
-            </div>
+          <p>Your iPhone &amp; AI Text Hub are ready to go. Open <strong>Messages</strong> on your iPhone anytime to sync unread texts and queue or draft replies.</p>
+          <div class="wiz-box" style="padding:14px;">
+            <strong>Quick Tips:</strong>
+            <ul style="margin:8px 0 0 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
+              <li>Nothing ever sends automatically &mdash; you always tap send in Messages.</li>
+              <li>You can upload more contacts, manage custom contacts, or replay this guide anytime from the dashboard.</li>
+            </ul>
           </div>
         </div>
 
@@ -914,19 +939,28 @@ export function renderDashboardPage(params: {
       var wizGoal = 'both';
       var wizAis = { claude: true, chatgpt: false, grok: false };
       var wizDoneKey = 'ath_setup_done_' + ${JSON.stringify(params.config.id)};
+      var wizResumeKey = 'ath_wiz_resume_' + ${JSON.stringify(params.config.id)};
       var wizLabels = {
         1: 'Choose Your Goal',
         2: 'Pick Your AI',
         3: 'Add iPhone Shortcut',
         4: 'Set Messages Automation',
-        5: 'Connect Your AI',
-        6: 'Start Your Agent',
-        7: 'All Set!'
+        5: 'Upload Contacts',
+        6: 'Turn On Auto-Draft',
+        7: 'Connect Your AI',
+        8: 'Start Your Agent',
+        9: 'All Set!'
       };
+      function getActiveSteps() {
+        if (wizGoal === 'autodraft') return [1, 3, 4, 5, 6, 9];
+        if (wizGoal === 'queue') return [1, 2, 3, 4, 5, 7, 8, 9];
+        return [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      }
       function pickGoal(g, el) {
         wizGoal = g;
         document.querySelectorAll('[data-goal]').forEach(function(b){ b.classList.remove('selected'); });
         el.classList.add('selected');
+        showWizStep(1);
       }
       function toggleAi(ai, el) {
         wizAis[ai] = !wizAis[ai];
@@ -946,24 +980,43 @@ export function renderDashboardPage(params: {
           b.style.display = wizAis[b.getAttribute('data-ai-btn')] ? 'inline-flex' : 'none';
         });
       }
+      function updateContactsCopy() {
+        var t = document.getElementById('wizContactsTitle');
+        var d = document.getElementById('wizContactsDesc');
+        if (!t || !d) return;
+        if (wizGoal === 'queue') {
+          t.textContent = 'Upload Contacts (Optional)';
+          d.innerHTML = 'Auto-Sync already grabs your 10 newest contacts. To import all of them: <strong>Contacts &rarr; &lt; Lists (top-left) &rarr; press &amp; hold All Contacts &rarr; Export &rarr; Save to Files</strong>.';
+        } else {
+          t.textContent = 'Upload Your Contacts (Required for Auto-Draft)';
+          d.innerHTML = 'Auto-Draft needs your contacts so it knows who is texting you. On iPhone: <strong>Contacts &rarr; &lt; Lists (top-left) &rarr; press &amp; hold All Contacts &rarr; Export &rarr; Save to Files</strong>.';
+        }
+      }
       function showWizStep(s) {
-        wizStep = Math.max(1, Math.min(7, s));
+        var steps = getActiveSteps();
+        if (steps.indexOf(s) === -1) s = steps[0];
+        wizStep = s;
+        var idx = steps.indexOf(s);
         document.querySelectorAll('.wiz-pane').forEach(function(p){
           p.style.display = Number(p.getAttribute('data-step')) === wizStep ? 'block' : 'none';
         });
-        document.getElementById('wizStepPill').textContent = 'Step ' + wizStep + ' of 7';
+        document.getElementById('wizStepPill').textContent = 'Step ' + (idx + 1) + ' of ' + steps.length;
         document.getElementById('wizStepLabel').textContent = wizLabels[wizStep] || '';
-        document.getElementById('wizProgBar').style.width = ((wizStep / 7) * 100) + '%';
-        document.getElementById('wizBackBtn').style.visibility = wizStep > 1 ? 'visible' : 'hidden';
-        document.getElementById('wizNextBtn').textContent = wizStep === 7 ? 'Go to Dashboard \u2192' : 'Next \u2192';
-        if (wizStep === 5 || wizStep === 6) renderAiStep();
+        document.getElementById('wizProgBar').style.width = (((idx + 1) / steps.length) * 100) + '%';
+        document.getElementById('wizBackBtn').style.visibility = idx > 0 ? 'visible' : 'hidden';
+        document.getElementById('wizNextBtn').textContent = idx === steps.length - 1 ? 'Go to Dashboard \u2192' : 'Next \u2192';
+        if (wizStep === 5) updateContactsCopy();
+        if (wizStep === 7 || wizStep === 8) renderAiStep();
       }
       function wizNav(dir) {
-        if (dir === 1 && wizStep === 7) { finishSetup(false); return; }
-        var next = wizStep + dir;
-        if (wizGoal === 'autodraft' && next === 2) next = dir > 0 ? 3 : 1;
-        if (wizGoal === 'autodraft' && (next === 5 || next === 6)) next = dir > 0 ? 7 : 4;
-        showWizStep(next);
+        var steps = getActiveSteps();
+        var idx = steps.indexOf(wizStep);
+        if (dir === 1 && idx === steps.length - 1) { finishSetup(false); return; }
+        var nextIdx = Math.max(0, Math.min(steps.length - 1, idx + dir));
+        showWizStep(steps[nextIdx]);
+      }
+      function saveWizResume() {
+        try { sessionStorage.setItem(wizResumeKey, JSON.stringify({ step: wizStep, goal: wizGoal, ais: wizAis })); } catch (e) {}
       }
       function filterContacts(q) {
         var needle = (q || '').toLowerCase().trim();
@@ -996,7 +1049,20 @@ export function renderDashboardPage(params: {
         }
       }
       try {
-        if (localStorage.getItem(wizDoneKey) === '1' && document.getElementById('setupWizard').style.display !== 'none') {
+        var resumeRaw = sessionStorage.getItem(wizResumeKey);
+        if (resumeRaw) {
+          sessionStorage.removeItem(wizResumeKey);
+          var r = JSON.parse(resumeRaw);
+          if (r && r.goal) wizGoal = r.goal;
+          if (r && r.ais) wizAis = r.ais;
+          document.querySelectorAll('[data-goal]').forEach(function(b){
+            b.classList.toggle('selected', b.getAttribute('data-goal') === wizGoal);
+          });
+          document.getElementById('setupWizard').style.display = 'block';
+          document.getElementById('simpleDash').style.display = 'none';
+          document.getElementById('toggleGuideBtn').textContent = 'Skip to Dashboard';
+          showWizStep(Number(r.step) || 6);
+        } else if (localStorage.getItem(wizDoneKey) === '1' && document.getElementById('setupWizard').style.display !== 'none') {
           finishSetup(false);
         }
       } catch (e) {}
@@ -1009,17 +1075,20 @@ export function renderDashboardPage(params: {
           setTimeout(() => el.style.outline = orig, 700);
         });
       }
-      const drop = document.getElementById('vcfDrop');
-      const input = document.getElementById('vcfInput');
-      const status = document.getElementById('vcfStatus');
       const csrf = ${JSON.stringify(params.csrfToken)};
-      drop.onclick = () => input.click();
-      drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
-      drop.ondragleave = () => drop.classList.remove('over');
-      drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) uploadVcf(e.dataTransfer.files[0]); };
-      input.onchange = () => { if (input.files[0]) uploadVcf(input.files[0]); };
-      async function uploadVcf(file) {
-        status.textContent = 'Uploading & parsing ' + file.name + '...';
+      function wireVcfDrop(dropId, inputId, statusId) {
+        const drop = document.getElementById(dropId);
+        const input = document.getElementById(inputId);
+        const st = document.getElementById(statusId);
+        if (!drop || !input || !st) return;
+        drop.onclick = () => input.click();
+        drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+        drop.ondragleave = () => drop.classList.remove('over');
+        drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) uploadVcf(e.dataTransfer.files[0], st); };
+        input.onchange = () => { if (input.files[0]) uploadVcf(input.files[0], st); };
+      }
+      async function uploadVcf(file, st) {
+        st.textContent = 'Uploading & parsing ' + file.name + '...';
         const text = await file.text();
         const res = await fetch('/api/contacts/upload', {
           method: 'POST',
@@ -1027,8 +1096,10 @@ export function renderDashboardPage(params: {
           body: text
         });
         const data = await res.json();
-        status.textContent = data.ok ? ('Imported ' + data.imported + ' contact number(s)!') : ('Error: ' + (data.error || 'Upload failed'));
+        st.textContent = data.ok ? ('Imported ' + data.imported + ' contact number(s)!') : ('Error: ' + (data.error || 'Upload failed'));
       }
+      wireVcfDrop('vcfDrop', 'vcfInput', 'vcfStatus');
+      wireVcfDrop('wizVcfDrop', 'wizVcfInput', 'wizVcfStatus');
     </script>
     `
   );
