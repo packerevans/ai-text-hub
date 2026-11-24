@@ -630,16 +630,16 @@ export function renderDashboardPage(params: {
         <!-- WIZARD STEP 4: AUTOMATION -->
         <div class="wiz-pane" data-step="4" style="display:none;">
           <h2>Set the Messages Automation</h2>
-          <p>There are two parts: <strong>When</strong> (the trigger) and <strong>Do</strong> (the action).</p>
+          <p>Set the AI Hub to trigger when you open Messages. There are two parts: <strong>When</strong> (the trigger) and <strong>Do</strong> (the action).</p>
           <div class="grid-2" style="align-items:start;">
             <div>
               <div class="wiz-box" style="border-left:4px solid var(--accent);">
                 <strong>1. When (Trigger):</strong><br/>
-                Open <strong>Shortcuts</strong> &rarr; <strong>Automation</strong> tab &rarr; <strong>+</strong> &rarr; <strong>App</strong> &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &rarr; <strong>Run Immediately</strong> &rarr; <strong>Next</strong>.
+                Open <strong>Shortcuts</strong> &rarr; <strong>Automation</strong> &rarr; <strong>New Automation</strong> (<strong>+</strong>) &rarr; <strong>App</strong> &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &rarr; <strong>Run Immediately</strong> &rarr; <strong>Next</strong>.
               </div>
               <div class="wiz-box" style="border-left:4px solid var(--ink);">
                 <strong>2. Do (Action):</strong><br/>
-                Tap <strong>Run Shortcut</strong> (or search <strong>AI Text Hub</strong>) &rarr; <strong>Done</strong>.
+                Select <strong>AI Text Hub</strong> (or search <strong>Run Shortcut</strong> &rarr; <strong>AI Text Hub</strong>) &rarr; <strong>Done</strong>.
               </div>
               <div class="wiz-box" style="font-size:0.84rem;color:var(--muted);">
                 <strong>3. First Run:</strong> Open <strong>Messages</strong> once &amp; tap <strong>Always Allow</strong> on the popups. <em>Nothing sends without your tap.</em>
@@ -647,7 +647,7 @@ export function renderDashboardPage(params: {
             </div>
             <div class="wiz-phone">
               <div class="wiz-phone-hdr">iPhone Preview &middot; Automation</div>
-              <div class="wiz-box"><strong>When:</strong> App &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &#10003;</div>
+              <div class="wiz-box"><strong>When:</strong> Automation &rarr; App &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &#10003;</div>
               <div class="wiz-box"><strong>Mode:</strong> Run Immediately &#10003;</div>
               <div class="wiz-box" style="border-color:var(--accent);"><strong>Do:</strong> Run Shortcut &rarr; <strong>AI Text Hub</strong> <span class="wiz-tap"></span></div>
             </div>
