@@ -279,21 +279,50 @@ const defaultHandler = {
       }
       const ct = (request.headers.get("Content-Type") || "").toLowerCase();
       let items: IncomingMessageInput[] = [];
+      let rawForDebug = "";
       if (ct.includes("application/json")) {
-        const body = (await request.json().catch(() => null)) as
+        const rawText = await request.text();
+        rawForDebug = rawText;
+        let body:
           | IncomingMessageInput
           | IncomingMessageInput[]
           | { messages?: IncomingMessageInput[]; text?: string }
-          | null;
+          | null = null;
+        try {
+          body = JSON.parse(rawText);
+        } catch {
+          body = null;
+        }
         if (Array.isArray(body)) items = body;
         else if (body && "messages" in body && Array.isArray(body.messages)) items = body.messages;
         else if (body && "text" in body && typeof body.text === "string") items = parseCustomDelimitedMessages(body.text);
         else if (body && "body" in body) items = [body as IncomingMessageInput];
       } else {
         const raw = await request.text();
+        rawForDebug = raw;
         items = parseCustomDelimitedMessages(raw);
       }
       const stats = await ingestMessages(env.DB, items, apiUser.id);
+      await env.DB.prepare(
+        "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?, 'last_messages_debug', ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+      )
+        .bind(
+          apiUser.id,
+          JSON.stringify({
+            ct,
+            rawLen: rawForDebug.length,
+            parsedCount: items.length,
+            stored: stats.stored,
+            duplicates: stats.duplicates,
+            filtered_otp: stats.filtered_otp,
+            firstItem: items[0] || null,
+            preview: rawForDebug.slice(0, 300),
+            at: new Date().toISOString(),
+          }),
+          Date.now()
+        )
+        .run()
+        .catch(() => {});
       const hosted = isHostedInstance(url.hostname);
       let aiPendingCount = 0;
       let targetChats: IncomingMessageInput[] = [];
