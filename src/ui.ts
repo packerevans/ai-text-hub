@@ -666,9 +666,9 @@ export function renderDashboardPage(params: {
               </div>
               <div id="wizAiInstructions"></div>
               <div class="row" style="margin-top:12px;" id="wizAiLaunchBtns">
-                <a class="btn btn-primary" data-ai-btn="claude" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
-                <a class="btn" data-ai-btn="chatgpt" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
-                <a class="btn" data-ai-btn="grok" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
+                <a class="btn btn-primary" data-ai-btn="claude" href="https://claude.ai/settings/connectors" target="_blank" rel="noopener">Open Claude Connectors &rarr;</a>
+                <a class="btn" data-ai-btn="chatgpt" href="https://chatgpt.com" target="_blank" rel="noopener">Open ChatGPT &rarr;</a>
+                <a class="btn" data-ai-btn="grok" href="https://grok.com/connectors" target="_blank" rel="noopener">Open Grok Connectors &rarr;</a>
               </div>
             </div>
             <div class="wiz-phone">
