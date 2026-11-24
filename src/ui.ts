@@ -129,7 +129,30 @@ input:focus, textarea:focus, select:focus {
   .btn { max-width: 100%; white-space: normal; text-align: center; }
   .row { flex-direction: column; align-items: stretch; }
   .row > .btn, .row > form, .row > form > .btn { width: 100%; }
-  .ca-phone { width: 100%; max-width: 240px; }
+  .wiz-prog { height: 5px; background: var(--surface-2); border: 1px solid var(--border); margin-bottom: 16px; }
+.wiz-prog-bar { height: 100%; background: var(--accent); transition: width 0.25s ease; }
+.wiz-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 14px 0 18px; }
+.wiz-choice {
+  padding: 14px; border: 2px solid var(--border); background: var(--surface);
+  cursor: pointer; text-align: left; transition: border-color 0.15s, background-color 0.15s;
+}
+.wiz-choice:hover { border-color: var(--ink); }
+.wiz-choice.selected { border-color: var(--accent); background: var(--accent-tint); }
+.wiz-choice strong { display: block; font-size: 0.96rem; margin-bottom: 4px; color: var(--ink); }
+.wiz-choice span { display: block; font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+.wiz-phone {
+  border: 2px solid var(--ink); background: var(--surface); padding: 14px;
+  font-size: 0.82rem; position: relative; min-height: 190px;
+}
+.wiz-phone-hdr { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 10px; }
+.wiz-box { background: var(--bg); border: 1px solid var(--border); padding: 8px 10px; margin-bottom: 8px; }
+.wiz-tap {
+  display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff; vertical-align: middle; margin-left: 6px;
+  animation: wizPulse 1.3s ease-in-out infinite;
+}
+@keyframes wizPulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.65; } }
+.ca-phone { width: 100%; max-width: 240px; }
 }
 .banner {
   padding: 12px 14px; border-radius: 0; margin-bottom: 16px; font-size: 0.9rem;
@@ -147,6 +170,29 @@ input:focus, textarea:focus, select:focus {
   font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--accent-tint); border: 1px solid var(--accent-border); color: var(--accent);
 }
+.wiz-prog { height: 5px; background: var(--surface-2); border: 1px solid var(--border); margin-bottom: 16px; }
+.wiz-prog-bar { height: 100%; background: var(--accent); transition: width 0.25s ease; }
+.wiz-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 14px 0 18px; }
+.wiz-choice {
+  padding: 14px; border: 2px solid var(--border); background: var(--surface);
+  cursor: pointer; text-align: left; transition: border-color 0.15s, background-color 0.15s;
+}
+.wiz-choice:hover { border-color: var(--ink); }
+.wiz-choice.selected { border-color: var(--accent); background: var(--accent-tint); }
+.wiz-choice strong { display: block; font-size: 0.96rem; margin-bottom: 4px; color: var(--ink); }
+.wiz-choice span { display: block; font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+.wiz-phone {
+  border: 2px solid var(--ink); background: var(--surface); padding: 14px;
+  font-size: 0.82rem; position: relative; min-height: 190px;
+}
+.wiz-phone-hdr { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 10px; }
+.wiz-box { background: var(--bg); border: 1px solid var(--border); padding: 8px 10px; margin-bottom: 8px; }
+.wiz-tap {
+  display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff; vertical-align: middle; margin-left: 6px;
+  animation: wizPulse 1.3s ease-in-out infinite;
+}
+@keyframes wizPulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.65; } }
 .ca-phone {
   width: 224px; margin: 0 auto; border: 2px solid var(--ink); background: var(--bg);
   padding: 8px; position: relative;
@@ -465,15 +511,20 @@ export function renderDashboardPage(params: {
           )
           .join("");
 
+  const showWizardByDefault = params.contactCount === 0 && params.chatCount === 0 && !autoDraftOn && !params.freshMcpBearer;
+
   return layout(
     "Dashboard — AI Text Hub",
     `
     <div class="row" style="justify-content:space-between;margin-bottom:14px">
       <div>
         <h1>AI Text Hub</h1>
-        <p style="margin:0">Account: <strong>${esc(params.config.username || "admin")}</strong> &middot; ${params.contactCount} contacts &middot; ${params.chatCount} active chats &middot; ${params.pendingOutbox} queued</p>
+        <p style="margin:0">Account: <strong>${esc(params.config.username || "admin")}</strong> &middot; ${params.contactCount} contacts &middot; ${params.chatCount} chats &middot; ${params.pendingOutbox} queued</p>
       </div>
-      <form method="POST" action="/logout"><button class="btn" type="submit">Sign Out</button></form>
+      <div class="row">
+        <button class="btn" type="button" id="toggleGuideBtn" onclick="toggleSetupMode()">${showWizardByDefault ? "Skip to Dashboard" : "Setup Guide"}</button>
+        <form method="POST" action="/logout" style="margin:0"><button class="btn" type="submit">Sign Out</button></form>
+      </div>
     </div>
 
     ${params.notice ? `<div class="banner">${esc(params.notice)}</div>` : ""}
@@ -491,69 +542,188 @@ export function renderDashboardPage(params: {
         : ""
     }
 
-    <div class="card">
-      <span class="pill">Step 1</span>
-      <h2 style="margin-top:8px;">Install iPhone Shortcut &amp; Automation</h2>
-      <div class="grid-2" style="align-items:center;">
-        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
-          <div style="width:132px;height:132px;padding:8px;background:#fff;border:1px solid var(--border);">${SHORTCUT_QR_SVG}</div>
-          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
-            <a class="btn btn-primary" href="${SHORTCUT_ICLOUD_URL}" target="_blank" rel="noopener">Add iOS Shortcut &rarr;</a>
-            <ul style="margin:0 0 0 16px;font-size:0.8rem;color:var(--muted);display:flex;flex-direction:column;gap:2px;">
-              <li>Scan QR or tap button, then paste Prompt 1 &amp; 2.</li>
-              <li>In Shortcuts &rarr; Automation &rarr; +: <strong>Messages &rarr; Is Opened &rarr; Next &rarr; Run Immediately &rarr; AI Text Hub</strong>.</li>
-              <li>Run the Shortcut once to sync your contacts.</li>
-            </ul>
+    <div id="setupWizard" style="display:${showWizardByDefault ? "block" : "none"};">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+          <span class="pill" id="wizStepPill">Step 1 of 6</span>
+          <span style="font-size:0.8rem;color:var(--muted);" id="wizStepLabel">Choose Your Goal</span>
+        </div>
+        <div class="wiz-prog"><div class="wiz-prog-bar" id="wizProgBar" style="width:16.6%;"></div></div>
+
+        <!-- WIZARD STEP 1: GOAL -->
+        <div class="wiz-pane" data-step="1">
+          <h2>What are you looking for?</h2>
+          <p>Pick one so we only show the steps you actually need.</p>
+          <div class="wiz-choices">
+            <button type="button" class="wiz-choice" data-goal="queue" onclick="pickGoal('queue', this)">
+              <strong>Queue texts from my AI</strong>
+              <span>Ask Claude, ChatGPT, or Grok to read texts &amp; queue replies for your approval.</span>
+            </button>
+            <button type="button" class="wiz-choice" data-goal="autodraft" onclick="pickGoal('autodraft', this)">
+              <strong>Auto-Draft my unread texts</strong>
+              <span>Automatically draft replies to 1&ndash;4 person chats whenever Messages opens.</span>
+            </button>
+            <button type="button" class="wiz-choice selected" data-goal="both" onclick="pickGoal('both', this)">
+              <strong>Both (Recommended)</strong>
+              <span>Full AI texting assistant + automatic background drafts.</span>
+            </button>
           </div>
         </div>
-        <div>
-          <label style="margin-top:0;">Prompt 1: Worker URL</label>
-          <div class="row">
-            <div class="code-box" id="dashWorkerUrl">${esc(params.origin)}</div>
-            <button class="btn" type="button" onclick="copyText('dashWorkerUrl')">Copy</button>
+
+        <!-- WIZARD STEP 2: AI CLIENT -->
+        <div class="wiz-pane" data-step="2" style="display:none;">
+          <h2>Which AI are you using?</h2>
+          <p>Select one or more (you can always add another later).</p>
+          <div class="wiz-choices">
+            <button type="button" class="wiz-choice selected" data-ai="claude" onclick="toggleAi('claude', this)">
+              <strong>Claude (Free or Paid)</strong>
+              <span>Works on Claude Free &amp; Pro via Custom Connectors.</span>
+            </button>
+            <button type="button" class="wiz-choice" data-ai="chatgpt" onclick="toggleAi('chatgpt', this)">
+              <strong>ChatGPT (Pro / Team)</strong>
+              <span>Uses Developer Mode &rarr; Apps &rarr; Create App.</span>
+            </button>
+            <button type="button" class="wiz-choice" data-ai="grok" onclick="toggleAi('grok', this)">
+              <strong>Grok (Paid)</strong>
+              <span>Connects via grok.com/connectors &rarr; Custom.</span>
+            </button>
           </div>
-          <label>Prompt 2: Shortcut API Key</label>
-          ${
-            params.freshApiKey
-              ? `<div class="row">
-                   <div class="code-box" id="dashApiKey">${esc(params.freshApiKey)}</div>
-                   <button class="btn btn-primary" type="button" onclick="copyText('dashApiKey')">Copy Key</button>
-                 </div>`
-              : `<div class="row" style="justify-content:space-between;">
-                   <div class="code-box">Saved (${esc(params.config.api_key_prefix)})</div>
-                   <form method="POST" action="/api/rotate-key" style="margin:0"><input type="hidden" name="csrf" value="${esc(params.csrfToken)}" /><button class="btn" type="submit">Reveal New Key</button></form>
-                 </div>`
-          }
+        </div>
+
+        <!-- WIZARD STEP 3: SHORTCUT -->
+        <div class="wiz-pane" data-step="3" style="display:none;">
+          <h2>Add the iPhone Shortcut</h2>
+          <p>Tap <strong>Add iOS Shortcut</strong>, then paste these 2 boxes into the import prompts.</p>
+          <div class="grid-2" style="align-items:start;">
+            <div>
+              <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+                <div style="width:104px;height:104px;padding:6px;background:#fff;border:1px solid var(--border);flex-shrink:0;">${SHORTCUT_QR_SVG}</div>
+                <a class="btn btn-primary" href="${SHORTCUT_ICLOUD_URL}" target="_blank" rel="noopener">Add iOS Shortcut &rarr;</a>
+              </div>
+              <label style="margin-top:0;">Prompt 1: Worker URL</label>
+              <div class="row" style="margin-bottom:8px;">
+                <div class="code-box" id="wizWorkerUrl">${esc(params.origin)}</div>
+                <button class="btn" type="button" onclick="copyText('wizWorkerUrl')">Copy</button>
+              </div>
+              <label>Prompt 2: Shortcut API Key</label>
+              ${
+                params.freshApiKey
+                  ? `<div class="row">
+                       <div class="code-box" id="wizApiKey">${esc(params.freshApiKey)}</div>
+                       <button class="btn btn-primary" type="button" onclick="copyText('wizApiKey')">Copy Key</button>
+                     </div>`
+                  : `<div class="row" style="justify-content:space-between;">
+                       <div class="code-box">Saved (${esc(params.config.api_key_prefix)})</div>
+                       <form method="POST" action="/api/rotate-key" style="margin:0"><input type="hidden" name="csrf" value="${esc(params.csrfToken)}" /><button class="btn" type="submit">Reveal New Key</button></form>
+                     </div>`
+              }
+            </div>
+            <div class="wiz-phone">
+              <div class="wiz-phone-hdr">iPhone Preview &middot; Import</div>
+              <div class="wiz-box"><strong>1. Worker URL</strong><div style="color:var(--muted);font-size:0.76rem;">${esc(params.origin)}</div></div>
+              <div class="wiz-box"><strong>2. Shortcut API Key</strong><div style="color:var(--muted);font-size:0.76rem;">ath_••••••••••••</div></div>
+              <div style="margin-top:12px;padding:8px;background:var(--accent);color:#fff;font-weight:700;text-align:center;">Add Shortcut <span class="wiz-tap"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WIZARD STEP 4: AUTOMATION -->
+        <div class="wiz-pane" data-step="4" style="display:none;">
+          <h2>Set the Messages Automation</h2>
+          <p>There are two parts: <strong>When</strong> (the trigger) and <strong>Do</strong> (the action).</p>
+          <div class="grid-2" style="align-items:start;">
+            <div>
+              <div class="wiz-box" style="border-left:4px solid var(--accent);">
+                <strong>1. When (Trigger):</strong><br/>
+                Open <strong>Shortcuts</strong> &rarr; <strong>Automation</strong> tab &rarr; <strong>+</strong> &rarr; <strong>App</strong> &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &rarr; <strong>Run Immediately</strong> &rarr; <strong>Next</strong>.
+              </div>
+              <div class="wiz-box" style="border-left:4px solid var(--ink);">
+                <strong>2. Do (Action):</strong><br/>
+                Tap <strong>Run Shortcut</strong> (or search <strong>AI Text Hub</strong>) &rarr; <strong>Done</strong>.
+              </div>
+              <div class="wiz-box" style="font-size:0.84rem;color:var(--muted);">
+                <strong>3. First Run:</strong> Open <strong>Messages</strong> once &amp; tap <strong>Always Allow</strong> on the popups. <em>Nothing sends without your tap.</em>
+              </div>
+            </div>
+            <div class="wiz-phone">
+              <div class="wiz-phone-hdr">iPhone Preview &middot; Automation</div>
+              <div class="wiz-box"><strong>When:</strong> App &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &#10003;</div>
+              <div class="wiz-box"><strong>Mode:</strong> Run Immediately &#10003;</div>
+              <div class="wiz-box" style="border-color:var(--accent);"><strong>Do:</strong> Run Shortcut &rarr; <strong>AI Text Hub</strong> <span class="wiz-tap"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WIZARD STEP 5: CONNECT AI -->
+        <div class="wiz-pane" data-step="5" style="display:none;">
+          <h2>Connect Your AI</h2>
+          <div class="grid-2" style="align-items:start;">
+            <div>
+              <label style="margin-top:0;">Remote MCP URL</label>
+              <div class="row" style="margin-bottom:12px;">
+                <div class="code-box" id="wizMcpUrl">${esc(mcpUrl)}</div>
+                <button class="btn" type="button" onclick="copyText('wizMcpUrl')">Copy URL</button>
+              </div>
+              <div id="wizAiInstructions"></div>
+              <div class="row" style="margin-top:12px;" id="wizAiLaunchBtns">
+                <a class="btn btn-primary" data-ai-btn="claude" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
+                <a class="btn" data-ai-btn="chatgpt" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
+                <a class="btn" data-ai-btn="grok" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
+              </div>
+            </div>
+            <div class="wiz-phone">
+              <div class="wiz-phone-hdr">iPhone Preview &middot; Connector</div>
+              <div class="wiz-box"><strong>Name:</strong> AI Texting <span style="color:var(--muted);">(any name works)</span></div>
+              <div class="wiz-box"><strong>URL:</strong> .../mcp</div>
+              <div class="wiz-box"><strong>Auth:</strong> Detected <span style="color:var(--muted);">(ignore Headers)</span></div>
+              <div style="margin-top:10px;padding:8px;background:var(--accent);color:#fff;font-weight:700;text-align:center;">Add &rarr; Approve Connection <span class="wiz-tap"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WIZARD STEP 6: CELEBRATION & OPTIONAL EXTRAS -->
+        <div class="wiz-pane" data-step="6" style="display:none;">
+          <h2>You're All Set! 🎉</h2>
+          <p>Your iPhone &amp; AI are ready. These last two extras are <strong>optional</strong> — you can turn them on now or anytime on your dashboard.</p>
+          <div class="grid-2" style="align-items:start;">
+            <div class="wiz-box" style="padding:14px;">
+              <strong>Optional: Auto-Draft Replies</strong>
+              <p style="font-size:0.84rem;margin:6px 0 10px;">Automatically drafts replies for 1&ndash;4 person chats (2,000 free credits/day, $12/yr Unlimited).</p>
+              <form method="POST" action="/api/auto-draft/toggle" style="margin:0;">
+                <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+                ${
+                  autoDraftOn
+                    ? `<button class="btn btn-primary" type="submit">Auto-Draft: ON</button>`
+                    : `<div class="row">
+                         <select name="max_participants" style="width:auto;">
+                           <option value="1">1 person</option>
+                           <option value="2">1&ndash;2 people</option>
+                           <option value="3">1&ndash;3 people</option>
+                           <option value="4" selected>1&ndash;4 people (Preset)</option>
+                         </select>
+                         <button class="btn btn-primary" type="submit">Turn Auto-Draft ON</button>
+                       </div>`
+                }
+              </form>
+            </div>
+            <div class="wiz-box" style="padding:14px;">
+              <strong>Optional: Upload Contacts.vcf</strong>
+              <p style="font-size:0.82rem;margin:6px 0 8px;">Auto-Sync already grabs your 10 newest contacts. For all contacts: <strong>Contacts &rarr; &lt; Lists (top-left) &rarr; hold All Contacts &rarr; Export &rarr; Save to Files</strong>.</p>
+              <button class="btn" type="button" onclick="finishSetup(true)">Upload Contacts on Dashboard</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="justify-content:space-between;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+          <button class="btn" type="button" id="wizBackBtn" onclick="wizNav(-1)" style="visibility:hidden;">&larr; Back</button>
+          <div class="row">
+            <button class="btn btn-primary" type="button" id="wizNextBtn" onclick="wizNav(1)">Next &rarr;</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="card">
-      <span class="pill">Step 2</span>
-      <h2 style="margin-top:8px;">Connect Your AI</h2>
-      <ul style="margin:0 0 10px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li><strong>Claude (Free Works):</strong> Settings &rarr; Connectors &rarr; Add Custom Connector.</li>
-        <li><strong>ChatGPT (Pro / Team):</strong> Settings &rarr; Apps &rarr; Developer Mode ON &rarr; Create App.</li>
-        <li><strong>Grok (Paid):</strong> <code>grok.com/connectors</code> &rarr; New Connector &rarr; Custom.</li>
-      </ul>
-      <label style="margin-top:0;">Remote MCP URL</label>
-      <div class="row" style="margin-bottom:12px;">
-        <div class="code-box" id="mcpUrl">${esc(mcpUrl)}</div>
-        <button class="btn" type="button" onclick="copyText('mcpUrl')">Copy URL</button>
-      </div>
-      <label style="margin-top:0;">Onboarding Starter Message</label>
-      <div class="code-box" id="starterPromptMain" style="margin-bottom:10px;">${esc(starterPrompt)}</div>
-      <div class="row">
-        <a class="btn btn-primary" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
-        <a class="btn" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
-        <a class="btn" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
-        <button class="btn" type="button" onclick="copyText('starterPromptMain')">Copy Message</button>
-      </div>
-      <div style="margin-top:14px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--accent-border);border-left:4px solid var(--accent);font-size:1.05rem;line-height:1.45;">
-        <strong>Make sure you trigger the Shortcut when Messages is opened:</strong><br/>
-        <span style="font-size:0.95rem;">Shortcuts &rarr; Automation &rarr; <strong>+</strong> &rarr; App &rarr; <strong>Messages</strong> &rarr; <strong>Is Opened</strong> &rarr; Next &rarr; <strong>Run Immediately</strong> &rarr; <strong>AI Text Hub</strong>.</span>
-      </div>
-    </div>
+    <div id="simpleDash" style="display:${showWizardByDefault ? "none" : "block"};">
 
     <div class="card">
       <span class="pill">Background AI</span>
@@ -631,15 +801,15 @@ export function renderDashboardPage(params: {
       }
     </div>
 
-    <div class="card">
+    <div class="card" id="contactsCard">
       <span class="pill">Recommended</span>
       <h2 style="margin-top:8px;">Contacts (${params.contactCount} Synced)</h2>
       <div class="grid-2" style="align-items:start;">
         <div>
           <ul style="margin:0 0 14px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
             <li><strong>${params.contactCount}</strong> contact(s) currently synced.</li>
-            <li><strong>Recommended:</strong> Upload your <code>Contacts.vcf</code> below so your AI &amp; Auto-Draft immediately know every name and phone number (your Shortcut also auto-syncs contacts).</li>
-            <li><strong>On iPhone:</strong> Contacts &rarr; 3 bars (top-left) &rarr; hold <em>All Contacts</em> &rarr; Export &rarr; Save to Files.</li>
+            <li><strong>On iPhone:</strong> Contacts &rarr; <strong>&lt; Lists</strong> (top-left) &rarr; press &amp; hold <em>All Contacts</em> &rarr; <strong>Export</strong> &rarr; Save to Files.</li>
+            <li><em>Optional:</em> Auto-Sync already pulls your 10 most recent contacts automatically.</li>
           </ul>
           <div class="dropzone" id="vcfDrop">
             <strong>Drop <code>Contacts.vcf</code> here</strong> or tap to pick from Files
@@ -655,6 +825,44 @@ export function renderDashboardPage(params: {
         </div>
         <div>
           ${CONTACTS_ANIM_HTML}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="pill">Shortcut &amp; AI Keys</span>
+      <h2 style="margin-top:8px;">Quick Access</h2>
+      <div class="grid-2">
+        <div>
+          <label style="margin-top:0;">Worker URL</label>
+          <div class="row">
+            <div class="code-box" id="dashWorkerUrl">${esc(params.origin)}</div>
+            <button class="btn" type="button" onclick="copyText('dashWorkerUrl')">Copy</button>
+          </div>
+          <label>Shortcut API Key</label>
+          ${
+            params.freshApiKey
+              ? `<div class="row">
+                   <div class="code-box" id="dashApiKey">${esc(params.freshApiKey)}</div>
+                   <button class="btn btn-primary" type="button" onclick="copyText('dashApiKey')">Copy Key</button>
+                 </div>`
+              : `<div class="row" style="justify-content:space-between;">
+                   <div class="code-box">Saved (${esc(params.config.api_key_prefix)})</div>
+                   <form method="POST" action="/api/rotate-key" style="margin:0"><input type="hidden" name="csrf" value="${esc(params.csrfToken)}" /><button class="btn" type="submit">Reveal New Key</button></form>
+                 </div>`
+          }
+        </div>
+        <div>
+          <label style="margin-top:0;">Remote MCP URL</label>
+          <div class="row" style="margin-bottom:10px;">
+            <div class="code-box" id="mcpUrl">${esc(mcpUrl)}</div>
+            <button class="btn" type="button" onclick="copyText('mcpUrl')">Copy URL</button>
+          </div>
+          <div class="row">
+            <a class="btn btn-primary" href="${claudeLaunchUrl}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
+            <a class="btn" href="${chatgptLaunchUrl}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
+            <a class="btn" href="${grokLaunchUrl}" target="_blank" rel="noopener">Open in Grok &rarr;</a>
+          </div>
         </div>
       </div>
     </div>
@@ -700,8 +908,92 @@ export function renderDashboardPage(params: {
         </form>
       </div>
     </details>
+    </div>
 
     <script>
+      var wizStep = 1;
+      var wizGoal = 'both';
+      var wizAis = { claude: true, chatgpt: false, grok: false };
+      var wizDoneKey = 'ath_setup_done_' + ${JSON.stringify(params.config.id)};
+      var wizLabels = {
+        1: 'Choose Your Goal',
+        2: 'Pick Your AI',
+        3: 'Add iPhone Shortcut',
+        4: 'Set Messages Automation',
+        5: 'Connect Your AI',
+        6: 'All Set!'
+      };
+      function pickGoal(g, el) {
+        wizGoal = g;
+        document.querySelectorAll('[data-goal]').forEach(function(b){ b.classList.remove('selected'); });
+        el.classList.add('selected');
+      }
+      function toggleAi(ai, el) {
+        wizAis[ai] = !wizAis[ai];
+        if (!wizAis.claude && !wizAis.chatgpt && !wizAis.grok) { wizAis[ai] = true; return; }
+        el.classList.toggle('selected', wizAis[ai]);
+      }
+      function renderAiStep() {
+        var box = document.getElementById('wizAiInstructions');
+        if (!box) return;
+        var html = '<ul style="margin:0 0 8px 18px;color:var(--muted);display:flex;flex-direction:column;gap:6px;">';
+        if (wizAis.claude) html += '<li><strong>Claude:</strong> Settings &rarr; Connectors &rarr; Add Custom Connector &rarr; Name it anything (e.g. <code>Texting</code>), leave Auth on <strong>Detected</strong>, ignore Headers &rarr; <strong>Add</strong> &rarr; <strong>Approve Connection</strong>.</li>';
+        if (wizAis.chatgpt) html += '<li><strong>ChatGPT:</strong> Settings &rarr; Apps &rarr; Developer Mode ON &rarr; Create App &rarr; paste MCP URL &rarr; <strong>Approve Connection</strong>.</li>';
+        if (wizAis.grok) html += '<li><strong>Grok:</strong> <code>grok.com/connectors</code> &rarr; New Connector &rarr; Custom &rarr; paste MCP URL &rarr; <strong>Approve Connection</strong>.</li>';
+        html += '</ul>';
+        box.innerHTML = html;
+        document.querySelectorAll('[data-ai-btn]').forEach(function(b){
+          b.style.display = wizAis[b.getAttribute('data-ai-btn')] ? 'inline-flex' : 'none';
+        });
+      }
+      function showWizStep(s) {
+        wizStep = Math.max(1, Math.min(6, s));
+        document.querySelectorAll('.wiz-pane').forEach(function(p){
+          p.style.display = Number(p.getAttribute('data-step')) === wizStep ? 'block' : 'none';
+        });
+        document.getElementById('wizStepPill').textContent = 'Step ' + wizStep + ' of 6';
+        document.getElementById('wizStepLabel').textContent = wizLabels[wizStep] || '';
+        document.getElementById('wizProgBar').style.width = ((wizStep / 6) * 100) + '%';
+        document.getElementById('wizBackBtn').style.visibility = wizStep > 1 ? 'visible' : 'hidden';
+        document.getElementById('wizNextBtn').textContent = wizStep === 6 ? 'Go to Dashboard \u2192' : 'Next \u2192';
+        if (wizStep === 5) renderAiStep();
+      }
+      function wizNav(dir) {
+        if (dir === 1 && wizStep === 6) { finishSetup(false); return; }
+        var next = wizStep + dir;
+        if (wizGoal === 'autodraft' && next === 2) next = dir > 0 ? 3 : 1;
+        if (wizGoal === 'autodraft' && next === 5) next = dir > 0 ? 6 : 4;
+        showWizStep(next);
+      }
+      function finishSetup(scrollContacts) {
+        try { localStorage.setItem(wizDoneKey, '1'); } catch (e) {}
+        document.getElementById('setupWizard').style.display = 'none';
+        document.getElementById('simpleDash').style.display = 'block';
+        document.getElementById('toggleGuideBtn').textContent = 'Setup Guide';
+        if (scrollContacts) {
+          var c = document.getElementById('contactsCard');
+          if (c) c.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+      function toggleSetupMode() {
+        var w = document.getElementById('setupWizard');
+        var d = document.getElementById('simpleDash');
+        var btn = document.getElementById('toggleGuideBtn');
+        var showingWiz = w.style.display !== 'none';
+        if (showingWiz) {
+          finishSetup(false);
+        } else {
+          w.style.display = 'block';
+          d.style.display = 'none';
+          btn.textContent = 'Skip to Dashboard';
+          showWizStep(1);
+        }
+      }
+      try {
+        if (localStorage.getItem(wizDoneKey) === '1' && document.getElementById('setupWizard').style.display !== 'none') {
+          finishSetup(false);
+        }
+      } catch (e) {}
       function copyText(id) {
         const el = document.getElementById(id);
         if (!el) return;

@@ -31,7 +31,7 @@ const BASE_ONBOARDING_QUESTIONS = [
   {
     key: "sample_replies_calibration",
     question:
-      "Want to reply to 3 quick sample texts so I can match your texting style? (1) Family: 'Hey, are you free for dinner Sunday?' (2) Friend: 'yo what are you up to tonight' (3) Coworker: 'Can you send me that update when you get a sec?'",
+      "Want to reply to 3 quick sample texts so I can match your texting style (or just say 'skip' and I'll learn as we go)? (1) Family: 'Hey, are you free for dinner Sunday?' (2) Friend: 'yo what are you up to tonight' (3) Coworker: 'Can you send me that update when you get a sec?'",
   },
 ];
 
@@ -72,8 +72,8 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
       const missing = activeQuestions.filter((q) => !saved[q.key]);
       const contactsTip =
         contactCount === 0
-          ? " IMPORTANT: They have 0 contacts synced yet—encourage them to upload their Contacts.vcf on the dashboard (Contacts -> 3 bars -> hold All Contacts -> Export -> Save to Files -> upload) so you and Auto-Draft can resolve names and numbers immediately!"
-          : ` (${contactCount} contacts synced; mention they can always upload a fresh Contacts.vcf on the dashboard anytime).`;
+          ? " Note: They have 0 contacts synced yet—mention casually (without pushing) that they can upload Contacts.vcf on the dashboard anytime (Contacts -> < Lists -> hold All Contacts -> Export) or let Auto-Sync grab their 10 newest."
+          : ` (${contactCount} contacts synced).`;
       return {
         content: [
           {
