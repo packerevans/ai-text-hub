@@ -546,13 +546,16 @@ export function parseCustomDelimitedMessages(raw: string): IncomingMessageInput[
     const msgMatch = block.match(/<message\s*=([\s\S]*?)>\s*\n?\s*<date/);
     const body = (msgMatch ? msgMatch[1] : "").trim();
     const date = (block.match(/<date\s*=\s*([^>]+)>/) || [])[1]?.trim() || "";
-    const read = (block.match(/<read\s*:\s*(\w+)>/) || [])[1]?.trim() || "";
-    const recipients = (block.match(/<recipients\s*=\s*([^>]+)>/) || [])[1]?.trim() || chat;
+    const read = (block.match(/<read\s*:\s*(\w+)>/i) || [])[1]?.trim() || "";
+    const recips = (block.match(/<recipients\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
+    const number = (block.match(/<number\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
+    const senderTag = (block.match(/<sender\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
+    const recipients = recips || number || chat;
     if (!body || body === "\uFFFC") continue;
     out.push({
       chat_title: chat,
       recipients,
-      sender: chat,
+      sender: senderTag || chat,
       body,
       sent_at: date,
       is_unread: read.toLowerCase() === "no",
