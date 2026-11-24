@@ -744,13 +744,19 @@ export function renderDashboardPage(params: {
         <!-- WIZARD STEP 9: CELEBRATION -->
         <div class="wiz-pane" data-step="9" style="display:none;">
           <h2>You're All Set! 🎉</h2>
-          <p>Your iPhone &amp; AI Text Hub are ready to go. Open <strong>Messages</strong> on your iPhone anytime to sync unread texts and queue or draft replies.</p>
+          <p>Your iPhone &amp; AI Text Hub are ready. Here are two quick things to try right now:</p>
           <div class="wiz-box" style="padding:14px;">
-            <strong>Quick Tips:</strong>
-            <ul style="margin:8px 0 0 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-              <li>Nothing ever sends automatically &mdash; you always tap send in Messages.</li>
-              <li>You can upload more contacts, manage custom contacts, or replay this guide anytime from the dashboard.</li>
-            </ul>
+            <strong>1. Queue a text from your AI</strong>
+            <p style="font-size:0.86rem;color:var(--muted);margin:6px 0 8px;">Ask your AI (Claude, ChatGPT, or Grok):</p>
+            <div class="row" style="margin-bottom:6px;">
+              <div class="code-box" id="wizTryPrompt">Send a message to 8015126487: I just set up my pipeline!</div>
+              <button class="btn" type="button" onclick="copyText('wizTryPrompt')">Copy</button>
+            </div>
+            <p style="font-size:0.82rem;color:var(--muted);margin:0;">Then open <strong>Messages</strong> on your iPhone to see it pop up ready to send.</p>
+          </div>
+          <div class="wiz-box" style="padding:14px;">
+            <strong>2. Test Auto-Draft on a new message</strong>
+            <p style="font-size:0.84rem;color:var(--muted);margin:6px 0 0;">When a new message is received, open the <strong>Messages</strong> app and wait for the shortcut to pop up with the AI response. <em>Nothing ever sends without your tap.</em></p>
           </div>
         </div>
 
