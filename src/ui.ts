@@ -886,21 +886,6 @@ export function renderDashboardPage(params: {
       <summary class="btn" style="margin-bottom:14px;">Advanced: Endpoints &amp; Settings</summary>
 
       <div class="card">
-        <h2>Guardrails</h2>
-        <form method="POST" action="/api/settings" class="grid-2">
-          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-          <div>
-            <label for="hourly_send_cap">Max Outbound Texts / Hour</label>
-            <input id="hourly_send_cap" name="hourly_send_cap" type="number" min="1" max="100" value="${params.config.hourly_send_cap}" />
-          </div>
-          <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:6px">
-            <label style="margin:0;font-weight:400"><input type="checkbox" name="require_approval_default" value="1" ${params.config.require_approval_default ? "checked" : ""} /> Require iPhone tap approval by default</label>
-            <button class="btn btn-primary" type="submit" style="margin-top:6px;width:fit-content">Save Guardrails</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="card">
         <h2>Manage Contacts (${params.contactCount})</h2>
         <input type="text" placeholder="Filter contacts by name or phone..." oninput="filterContacts(this.value)" style="margin-bottom:10px" />
         <div id="contactList" style="max-height:260px;overflow-y:auto;">
