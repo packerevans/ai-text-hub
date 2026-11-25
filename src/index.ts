@@ -478,11 +478,11 @@ const defaultHandler = {
           draftDebug = "ok";
           const draftOne = async (target: IncomingMessageInput) => {
             try {
-              const recent = await readChatMessages(env.DB, target.chat_title, 4, apiUser.id).catch(() => []);
+              const recent = await readChatMessages(env.DB, target.chat_title, 12, apiUser.id).catch(() => []);
               const historyText = recent
                 .slice()
                 .reverse()
-                .map((r) => `${r.sender || r.chat_title}: ${r.body}`)
+                .map((r) => `${r.sender === "Me" ? "Me" : (r.sender || r.chat_title)}: ${r.body}`)
                 .join("\n");
               const userPrompt = historyText
                 ? `Recent messages in "${target.chat_title}":\n${historyText}\n\nDraft a natural reply to the latest message.`

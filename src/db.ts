@@ -722,8 +722,27 @@ export async function claimPendingOutbox(db: D1Database, limit = 10, userId = 1)
 
 export async function ackOutboxItem(db: D1Database, id: string, userId = 1): Promise<boolean> {
   await ensureSchema(db);
+  const row = await db
+    .prepare("SELECT chat_title, recipients, body FROM outbox WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first<{ chat_title: string; recipients: string; body: string }>();
   const res = await db.prepare("DELETE FROM outbox WHERE id = ? AND user_id = ?").bind(id, userId).run();
-  return (res.meta?.changes ?? 0) > 0;
+  const acked = (res.meta?.changes ?? 0) > 0;
+  if (acked && row && row.chat_title !== "__new_contact__" && row.body) {
+    const now = Date.now();
+    const chatKey = row.chat_title.trim().toLowerCase();
+    const hash = await sha256Hex(`${userId}|${chatKey}|Me|${row.body}|${now}`);
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO messages
+         (user_id, chat_key, chat_title, recipients, sender, body, sent_at, sent_at_label, is_unread, message_hash, created_at)
+         VALUES (?, ?, ?, ?, 'Me', ?, ?, ?, 0, ?, ?)`
+      )
+      .bind(userId, chatKey, row.chat_title, row.recipients, row.body, now, new Date(now).toISOString(), hash, now)
+      .run()
+      .catch(() => {});
+  }
+  return acked;
 }
 
 export async function releaseOutboxItem(db: D1Database, id: string, userId = 1): Promise<boolean> {
