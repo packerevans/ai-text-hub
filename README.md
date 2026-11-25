@@ -34,7 +34,7 @@ A 100% private, AI Text Automation Hub running on **Cloudflare Workers + D1 + KV
 
 ### 3. Install the iPhone Shortcut
 1. Open the iCloud Shortcut on your iPhone:
-   - [Add AI Text Hub iOS Shortcut](https://www.icloud.com/shortcuts/c43e873769ff4ae8a70267b721e7ce1e)
+   - [Add AI Text Hub iOS Shortcut](https://www.icloud.com/shortcuts/bf667799570e4a4d87171d2315c9b0ac)
 2. Replace the pre-filled URL in Import Question #1 with your own `https://ai-text-hub.<your-subdomain>.workers.dev` URL.
 3. Paste your **Shortcut API Key** into Import Question #2.
 4. Open **Apple Shortcuts** → **Automation** tab → tap **+**:
