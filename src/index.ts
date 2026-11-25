@@ -19,7 +19,9 @@ import {
   claimPendingOutbox,
   claimShortcutManifest,
   claimStripeSessionOnce,
+  completeReminder,
   countChatParticipants,
+  createReminder,
   DAILY_FREE_AI_LIMIT,
   ensureSchema,
   findUnknownMessageNumbers,
@@ -36,6 +38,7 @@ import {
   isContactsSyncNeeded,
   isHostedInstance,
   isShortCodeOrOtp,
+  listReminders,
   isUserProActive,
   listSignupLogs,
   markContactsSynced,
@@ -488,11 +491,15 @@ const defaultHandler = {
                       ? ` in ${target.chat_title}`
                       : ""
                   }: ${target.body}`;
+              const autoTodoOn = prefs["auto_todo_enabled"] !== "0";
+              const todoRule = autoTodoOn
+                ? " If the message asks the user to do a concrete action item or follow-up, add one line at the very end: TODO: <short 3-8 word task>. Otherwise output only the reply."
+                : "";
               const aiPayload = {
                 messages: [
                   {
                     role: "system",
-                    content: `Draft a brief, helpful SMS reply on behalf of the user. Match their exact voice and tone. ${styleHint} Output ONLY the reply text, no quotes.`,
+                    content: `Draft a brief, helpful SMS reply on behalf of the user. Match their exact voice and tone. ${styleHint} Output ONLY the reply text, no quotes.${todoRule}`,
                   },
                   {
                     role: "user",
@@ -506,7 +513,21 @@ const defaultHandler = {
               } catch {
                 aiRes = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct-fast", aiPayload);
               }
-              const draft = (aiRes?.response || "").trim().slice(0, 600);
+              const rawResp = (aiRes?.response || "").trim();
+              let todoNote = "";
+              const replyLines: string[] = [];
+              for (const ln of rawResp.split(/\r?\n/)) {
+                const tm = ln.match(/^\s*TODO:\s*(.+)$/i);
+                if (tm) {
+                  todoNote = tm[1].trim().slice(0, 160);
+                } else {
+                  replyLines.push(ln);
+                }
+              }
+              const draft = replyLines.join("\n").trim().slice(0, 600);
+              if (autoTodoOn && todoNote) {
+                await createReminder(env.DB, apiUser.id, target.chat_title.trim(), todoNote).catch(() => {});
+              }
               if (!draft) {
                 draftDebug = "empty_ai_response";
                 return;
@@ -1115,6 +1136,60 @@ const defaultHandler = {
       });
     }
 
+    if (path === "/api/todo/toggle" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const prefs = await getAllPreferences(env.DB, activeUser.id);
+      const nextVal = prefs["auto_todo_enabled"] === "0" ? "1" : "0";
+      await env.DB.prepare(
+        `INSERT INTO user_preferences (user_id, key, value, updated_at)
+         VALUES (?, 'auto_todo_enabled', ?, ?)
+         ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+        .bind(activeUser.id, nextVal, Date.now())
+        .run();
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+        notice: nextVal === "1" ? "Auto To-Do turned ON." : "Auto To-Do turned OFF.",
+      });
+    }
+
+    if (path === "/api/todo/add" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const note = String(form.get("note") || "").trim();
+      const contact = String(form.get("contact_name") || "Personal").trim() || "Personal";
+      if (note) {
+        await createReminder(env.DB, activeUser.id, contact, note);
+      }
+      return Response.redirect(`${url.origin}/dashboard`, 302);
+    }
+
+    if (path === "/api/todo/complete" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const id = parseInt(String(form.get("id") || "0"), 10);
+      if (id > 0) await completeReminder(env.DB, activeUser.id, id);
+      return Response.redirect(`${url.origin}/dashboard`, 302);
+    }
+
+    if (path === "/api/todo/delete" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const id = parseInt(String(form.get("id") || "0"), 10);
+      if (id > 0) {
+        await env.DB.prepare("DELETE FROM reminders WHERE id = ? AND user_id = ?").bind(id, activeUser.id).run();
+      }
+      return Response.redirect(`${url.origin}/dashboard`, 302);
+    }
+
     if (path === "/api/clients/revoke" && method === "POST") {
       const form = await request.formData();
       if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
@@ -1141,7 +1216,7 @@ async function renderDashboardFromState(
   extra?: { freshApiKey?: string; freshMcpBearer?: string; notice?: string }
 ): Promise<Response> {
   const config = (await getConfig(env.DB, userId))!;
-  const [contacts, chats, outbox, contactsListRes, grantsRes, csrfToken, preferences] = await Promise.all([
+  const [contacts, chats, outbox, contactsListRes, grantsRes, csrfToken, preferences, todos] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>(),
     env.DB.prepare("SELECT COUNT(DISTINCT chat_key) as c FROM messages WHERE user_id = ?").bind(userId).first<{ c: number }>(),
     env.DB.prepare("SELECT COUNT(*) as c FROM outbox WHERE user_id = ?").bind(userId).first<{ c: number }>(),
@@ -1151,6 +1226,7 @@ async function renderDashboardFromState(
     env.OAUTH_PROVIDER.listUserGrants(oauthUserKey(userId)),
     createCsrfToken(appSecret),
     getAllPreferences(env.DB, userId),
+    listReminders(env.DB, userId, false),
   ]);
 
   return renderDashboardPage({
@@ -1162,6 +1238,7 @@ async function renderDashboardFromState(
     pendingOutbox: outbox?.c ?? 0,
     contacts: contactsListRes.results || [],
     preferences,
+    todos,
     grants: (grantsRes.items || []).map((g) => ({
       id: g.id,
       clientId: g.clientId,
