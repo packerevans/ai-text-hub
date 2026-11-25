@@ -432,7 +432,6 @@ const defaultHandler = {
         (!hosted || isUserProActive(apiUser) || getEffectiveDailyUsage(apiUser) < DAILY_FREE_AI_LIMIT)
       ) {
         const seenChats = new Set<string>();
-        const maxParticipants = Math.min(4, Math.max(1, Number(apiUser.auto_draft_max_participants ?? 4) || 4));
         const prefs = await getAllPreferences(env.DB, apiUser.id);
         const ignoredSet = new Set(
           (prefs["ignored_chats"] || "")
@@ -453,8 +452,7 @@ const defaultHandler = {
             m.is_unread &&
             body.length > 0 &&
             body !== "\uFFFC" &&
-            participants >= 1 &&
-            participants <= maxParticipants &&
+            participants === 1 &&
             !ignoredSet.has(key) &&
             !isLikelyNamedLargeGroup(title, recips) &&
             !isShortCodeOrOtp(sender, recips, body) &&

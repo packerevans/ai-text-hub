@@ -63,7 +63,6 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
       ]);
       const contactCount = contactRow?.c ?? 0;
       const autoDraftOn = config?.auto_draft_enabled === 1;
-      const maxParticipants = Math.min(4, Math.max(1, config?.auto_draft_max_participants ?? 4));
       const dailyUsed = config ? getEffectiveDailyUsage(config) : 0;
       const isPro = config ? isUserProActive(config) : false;
       const activeQuestions = autoDraftOn
@@ -81,12 +80,12 @@ export function buildMcpServer(env: Env, scopes: string[], userId = 1) {
             text: JSON.stringify(
               {
                 instructions: (autoDraftOn
-                  ? `Be upbeat and concise! Give a 1-sentence excited reaction that Auto-Draft is now ON for chats with 1–${maxParticipants} people (${isPro ? "Unlimited $12/yr" : `${dailyUsed}/${DAILY_FREE_AI_LIMIT} credits used today`}), briefly note why tuning helps drafts match their real voice before they hit Send, ask only the unanswered questions below conversationally (never overwhelm them), save answers + a distilled texting_style summary via save_user_preferences, and remind them they can come back anytime to adjust.`
+                  ? `Be upbeat and concise! Give a 1-sentence excited reaction that Auto-Draft is now ON for 1-on-1 texts (${isPro ? "Unlimited $12/yr" : `${dailyUsed}/${DAILY_FREE_AI_LIMIT} credits used today`}), briefly note why tuning helps drafts match their real voice before they hit Send, ask only the unanswered questions below conversationally (never overwhelm them), save answers + a distilled texting_style summary via save_user_preferences, and remind them they can come back anytime to adjust.`
                   : "Be upbeat, warm, and concise! Start with a 1-sentence overview ('Looks like anytime you open Messages on your iPhone, I can read your chats and queue up texts for you to approve!'). Then ask ONLY the 2 light unanswered questions below conversationally (one step at a time, never overwhelming them): (1) overlapping/family last names to prioritize as you get started, and (2) 3 fun quick sample texts (family, friend, coworker) to learn their style — or let them skip and learn as they go. Save answers + a distilled texting_style via save_user_preferences, and remind them they can always come back to adjust nicknames, style, or schedule anytime.") + contactsTip,
                 contact_count: contactCount,
                 auto_draft_status: {
                   enabled: autoDraftOn,
-                  max_participants: maxParticipants,
+                  max_participants: 1,
                   daily_credits_used: dailyUsed,
                   daily_credits_limit: DAILY_FREE_AI_LIMIT,
                   is_pro: isPro,

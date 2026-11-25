@@ -473,8 +473,7 @@ export function renderDashboardPage(params: {
   const chatgptLaunchUrl = `https://chatgpt.com/?q=${encodedPrompt}`;
   const grokLaunchUrl = `https://grok.com/?q=${encodedPrompt}`;
   const autoDraftOn = params.config.auto_draft_enabled === 1;
-  const maxParticipants = Math.min(4, Math.max(1, params.config.auto_draft_max_participants ?? 4));
-  const autoDraftPrompt = `Hey! I just turned on Auto-Draft Replies for chats with 1–${maxParticipants} people. Please run get_onboarding_config to see my current setup and help me tune my auto-reply style and rules!`;
+  const autoDraftPrompt = `Hey! I just turned on Auto-Draft Replies for 1-on-1 texts. Please run get_onboarding_config to see my current setup and help me tune my auto-reply style and rules!`;
   const hosted = isHostedInstance(params.origin);
   const isPro = isUserProActive(params.config);
   const dailyUsed = getEffectiveDailyUsage(params.config);
@@ -562,7 +561,7 @@ export function renderDashboardPage(params: {
             </button>
             <button type="button" class="wiz-choice" data-goal="autodraft" onclick="pickGoal('autodraft', this)">
               <strong>Auto-Draft my unread texts</strong>
-              <span>Automatically draft replies to 1&ndash;4 person chats whenever Messages opens.</span>
+              <span>Automatically draft replies to your unread 1-on-1 texts whenever Messages opens.</span>
             </button>
             <button type="button" class="wiz-choice selected" data-goal="both" onclick="pickGoal('both', this)">
               <strong>Both (Recommended)</strong>
@@ -676,25 +675,18 @@ export function renderDashboardPage(params: {
         <!-- WIZARD STEP 6: AUTO-DRAFT -->
         <div class="wiz-pane" data-step="6" style="display:none;">
           <h2>Turn On Auto-Draft Replies</h2>
-          <p>Automatically drafts replies for 1&ndash;4 person chats whenever Messages opens (2,000 free credits/day, $12/yr Unlimited).</p>
+          <p>Automatically drafts replies for unread 1-on-1 texts whenever Messages opens (2,000 free credits/day, $12/yr Unlimited).</p>
           <div class="wiz-box" style="padding:14px;">
             <form method="POST" action="/api/auto-draft/toggle" style="margin:0;" onsubmit="saveWizResume()">
               <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+              <input type="hidden" name="max_participants" value="1" />
               ${
                 autoDraftOn
                   ? `<div class="row" style="justify-content:space-between;">
                        <strong>Auto-Draft is ON &#10003;</strong>
                        <button class="btn" type="submit">Turn OFF</button>
                      </div>`
-                  : `<div class="row">
-                       <select name="max_participants" style="width:auto;">
-                         <option value="1">1 person</option>
-                         <option value="2">1&ndash;2 people</option>
-                         <option value="3">1&ndash;3 people</option>
-                         <option value="4" selected>1&ndash;4 people (Preset)</option>
-                       </select>
-                       <button class="btn btn-primary" type="submit">Turn Auto-Draft ON</button>
-                     </div>`
+                  : `<button class="btn btn-primary" type="submit">Turn Auto-Draft ON</button>`
               }
             </form>
           </div>
@@ -782,49 +774,21 @@ export function renderDashboardPage(params: {
                  <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
                  <button class="btn btn-primary" type="submit">Auto-Draft: ON</button>
                </form>`
-            : `<form method="POST" action="/api/auto-draft/toggle" style="margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            : `<form method="POST" action="/api/auto-draft/toggle" style="margin:0;">
                  <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-                 <label for="maxPartOff" style="margin:0;font-size:0.82rem;color:var(--muted);">Reply to chats up to:</label>
-                 <select id="maxPartOff" name="max_participants" style="width:auto;margin:0;padding:6px 10px;">
-                   <option value="1" ${maxParticipants === 1 ? "selected" : ""}>1 person (1-on-1 only)</option>
-                   <option value="2" ${maxParticipants === 2 ? "selected" : ""}>2 people</option>
-                   <option value="3" ${maxParticipants === 3 ? "selected" : ""}>3 people</option>
-                   <option value="4" ${maxParticipants === 4 ? "selected" : ""}>4 people (Recommended)</option>
-                 </select>
+                 <input type="hidden" name="max_participants" value="1" />
                  <button class="btn" type="submit">Turn Auto-Draft ON</button>
                </form>`
         }
       </div>
-      ${
-        autoDraftOn
-          ? `<form method="POST" action="/api/auto-draft/toggle" style="margin:10px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-               <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-               <input type="hidden" name="action" value="update_max" />
-               <label for="maxPartOn" style="margin:0;font-size:0.85rem;">How many people in a chat should Auto-Draft reply to?</label>
-               <select id="maxPartOn" name="max_participants" onchange="this.form.submit()" style="width:auto;margin:0;padding:6px 10px;">
-                 <option value="1" ${maxParticipants === 1 ? "selected" : ""}>1 person (1-on-1 only)</option>
-                 <option value="2" ${maxParticipants === 2 ? "selected" : ""}>1–2 people</option>
-                 <option value="3" ${maxParticipants === 3 ? "selected" : ""}>1–3 people</option>
-                 <option value="4" ${maxParticipants === 4 ? "selected" : ""}>1–4 people (Preset)</option>
-               </select>
-             </form>`
-          : ""
-      }
       <ul style="margin:10px 0 12px 18px;color:var(--muted);display:flex;flex-direction:column;gap:4px;">
-        <li>Drafts replies for new unread texts in chats with <strong>1&ndash;${maxParticipants}</strong> people (5+ person groups are always skipped). Approval menu still required before sending.</li>
+        <li>Drafts replies for new unread <strong>1-on-1</strong> texts (group chats are skipped). Approval menu still required before sending.</li>
         ${
           hosted
             ? `<li>Every user gets <strong>${DAILY_FREE_AI_LIMIT} free credits/day</strong> (${dailyUsed} / ${DAILY_FREE_AI_LIMIT} used today). <strong>$12/year</strong> to upgrade to Unlimited.</li>`
             : `<li>Runs on your own Cloudflare Workers AI allowance (10,000 free Neurons/day).</li>`
         }
       </ul>
-      ${
-        params.contactCount < 20
-          ? `<div class="banner" style="margin-bottom:12px;border-color:var(--accent-border);background:var(--surface-2);">
-               <strong>Heads up:</strong> Group size detection &amp; group replies struggle unless your full <code>Contacts.vcf</code> is uploaded below (auto-sync only pulls 10 recent contacts).
-             </div>`
-          : ""
-      }
       ${
         !hosted || isPro
           ? ""
