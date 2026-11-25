@@ -98,20 +98,27 @@ const defaultHandler = {
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const [items, manifest, pendingRaw, syncNeeded] = await Promise.all([
+      const [items, manifest, pendingRaw, syncNeeded, ncRow] = await Promise.all([
         claimPendingOutbox(env.DB, 10, apiUser.id),
         claimShortcutManifest(env.DB, apiUser.id),
         env.OAUTH_KV.get(`ai_pending:${apiUser.id}`),
         isContactsSyncNeeded(env.DB, apiUser.id),
+        env.DB.prepare(
+          "SELECT COUNT(*) as c FROM outbox WHERE user_id = ? AND status = 'pending' AND chat_title = '__new_contact__'"
+        )
+          .bind(apiUser.id)
+          .first<{ c: number }>(),
       ]);
       const aiPending = Math.max(0, parseInt(pendingRaw || "0", 10) || 0);
+      const nc = (ncRow?.c ?? 0) > 0 ? 1 : 0;
       return Response.json({
         count: items.length,
+        nc,
         ai_pending: aiPending,
         ...(syncNeeded ? { contacts_sync_needed: 1 } : {}),
         items: items.map((i) => ({
           id: i.id,
-          recipient: i.recipients || i.chat_title,
+          recipient: (i.chat_title && i.chat_title.trim()) ? i.chat_title.trim() : i.recipients,
           chat_title: i.chat_title,
           recipients: i.recipients,
           body: i.body,
@@ -121,11 +128,85 @@ const defaultHandler = {
       });
     }
 
+    if (path === "/api/contact" && method === "GET") {
+      const apiUser = await verifyShortcutApiKey(request, env);
+      if (!apiUser) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const res = await env.DB.prepare(
+        "SELECT id, body FROM outbox WHERE user_id = ? AND status = 'pending' AND chat_title = '__new_contact__' ORDER BY created_at ASC LIMIT 10"
+      )
+        .bind(apiUser.id)
+        .all<{ id: string; body: string }>();
+      const rows = res.results || [];
+      const contacts = rows.map((r) => {
+        let p: Record<string, string> = {};
+        try {
+          p = JSON.parse(r.body) || {};
+        } catch {
+          p = {};
+        }
+        return {
+          id: r.id,
+          ncfn: String(p.ncfn || ""),
+          ncln: String(p.ncln || ""),
+          ncc: String(p.ncc || ""),
+          ncn: String(p.ncn || ""),
+          ncp: String(p.ncp || ""),
+          nce: String(p.nce || ""),
+        };
+      });
+      if (rows.length > 0) {
+        await Promise.all(
+          rows.map((r) =>
+            env.DB.prepare("DELETE FROM outbox WHERE id = ? AND user_id = ?").bind(r.id, apiUser.id).run()
+          )
+        );
+      }
+      const first = contacts[0] || { ncfn: "", ncln: "", ncc: "", ncn: "", ncp: "", nce: "" };
+      return Response.json({
+        count: contacts.length,
+        items: contacts,
+        ncfn: first.ncfn,
+        ncln: first.ncln,
+        ncc: first.ncc,
+        ncn: first.ncn,
+        ncp: first.ncp,
+        nce: first.nce,
+      });
+    }
+
     const ackMatch = path.match(/^\/api\/outbox\/([a-zA-Z0-9_-]+)\/ack$/);
     if (ackMatch && method === "POST") {
       const apiUser = await verifyShortcutApiKey(request, env);
       if (!apiUser) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      let memVal = "";
+      try {
+        const rawAck = await request.text();
+        if (rawAck) {
+          try {
+            const parsedAck = JSON.parse(rawAck) as { mem?: unknown };
+            if (parsedAck && parsedAck.mem !== undefined) memVal = String(parsedAck.mem);
+          } catch {
+            memVal = rawAck;
+          }
+        }
+      } catch {
+        memVal = "";
+      }
+      if (memVal) {
+        const eqIdx = memVal.indexOf("=");
+        if (eqIdx > 0) {
+          const memName = memVal.slice(0, eqIdx).trim();
+          const memPhone = memVal.slice(eqIdx + 1).trim();
+          const digits = memPhone.replace(/\D/g, "");
+          const normalized = digits.length >= 10 ? digits.slice(-10) : digits;
+          if (memName && normalized.length >= 7) {
+            await importContacts(env.DB, [{ name: memName, phone: memPhone, normalized }], apiUser.id).catch(() => {});
+          }
+        }
       }
       const deleted = await ackOutboxItem(env.DB, ackMatch[1], apiUser.id);
       return Response.json({ ok: true, acked: deleted });

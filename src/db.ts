@@ -538,19 +538,19 @@ export interface IncomingMessageInput {
 export function parseCustomDelimitedMessages(raw: string): IncomingMessageInput[] {
   const out: IncomingMessageInput[] = [];
   const blocks = raw
-    .split(/\)\s*(?=\(<(?:chat|recipient))/i)
+    .split(/\)\s*(?=\(<(?:chat|recipient|c:))/i)
     .map((b) => b.trim().replace(/^\(/, "").replace(/\)$/, ""));
   for (const block of blocks) {
     const recipientTag = (block.match(/<recipient\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
-    const chat = (block.match(/<chat\s*=\s*([^>]+)>/i) || [])[1]?.trim() || recipientTag;
+    const chat = (block.match(/<chat\s*=\s*([^>]+)>/i) || block.match(/<c:([^>]+)>/) || [])[1]?.trim() || recipientTag;
     if (!chat) continue;
-    const msgMatch = block.match(/<message\s*=([\s\S]*?)>\s*\n?\s*<date/);
+    const msgMatch = block.match(/<message\s*=([\s\S]*?)>\s*\n?\s*<date/) || block.match(/<m:([\s\S]*?)>\s*<d:/);
     const body = (msgMatch ? msgMatch[1] : "").trim();
-    const date = (block.match(/<date\s*=\s*([^>]+)>/) || [])[1]?.trim() || "";
-    const read = (block.match(/<read\s*:\s*(\w+)>/i) || [])[1]?.trim() || "";
+    const date = (block.match(/<date\s*=\s*([^>]+)>/) || block.match(/<d:([^>]+)>/) || [])[1]?.trim() || "";
+    const read = (block.match(/<read\s*:\s*(\w+)>/i) || block.match(/<r\s*:\s*(\w+)>/i) || [])[1]?.trim() || "";
     const recips = (block.match(/<recipients\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
     const number = (block.match(/<number\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
-    const senderTag = (block.match(/<sender\s*=\s*([^>]+)>/i) || [])[1]?.trim() || "";
+    const senderTag = (block.match(/<sender\s*=\s*([^>]+)>/i) || block.match(/<s:([^>]*)>/) || [])[1]?.trim() || "";
     const recipients = recips || number || recipientTag || chat;
     if (!body || body === "\uFFFC") continue;
     out.push({
@@ -705,7 +705,7 @@ export async function claimPendingOutbox(db: D1Database, limit = 10, userId = 1)
 
   const pending = await db
     .prepare(
-      `SELECT * FROM outbox WHERE user_id = ? AND status = 'pending' ORDER BY created_at ASC LIMIT ?`
+      `SELECT * FROM outbox WHERE user_id = ? AND status = 'pending' AND chat_title != '__new_contact__' ORDER BY created_at ASC LIMIT ?`
     )
     .bind(userId, limit)
     .all<OutboxRow>();
