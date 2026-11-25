@@ -808,7 +808,44 @@ export function renderDashboardPage(params: {
                  <a class="btn" href="https://claude.ai/new?q=${encodeURIComponent(autoDraftPrompt)}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
                  <a class="btn" href="https://chatgpt.com/?q=${encodeURIComponent(autoDraftPrompt)}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
                  <button class="btn" type="button" id="showTrainingBtn" onclick="toggleTraining()">Show Training</button>
+                 <form method="POST" action="/api/todo/toggle" style="margin:0;">
+                   <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+                   <button class="btn ${params.preferences?.auto_todo_enabled !== "0" ? "btn-primary" : ""}" type="submit">Auto To-Do: ${params.preferences?.auto_todo_enabled !== "0" ? "ON" : "OFF"}</button>
+                 </form>
+                 ${
+                   params.preferences?.auto_todo_enabled !== "0"
+                     ? `<button class="btn" type="button" id="showTodoBtn" onclick="toggleTodoPanel()">Show To-Do List (${(params.todos || []).length})</button>`
+                     : ""
+                 }
                </div>
+               ${
+                 params.preferences?.auto_todo_enabled !== "0"
+                   ? `<div id="todoPanel" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+                        <h3 style="margin:0 0 8px;">AI To-Do List</h3>
+                        ${
+                          (params.todos || []).length === 0
+                            ? `<p style="font-size:0.88rem;color:var(--muted);margin:0 0 10px;">No open to-dos yet. Auto-Draft will save action items from incoming texts here.</p>`
+                            : (params.todos || [])
+                                .map(
+                                  (t) => `<div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:8px;">
+                                    <div><span class="pill">${esc(t.contact_name || "Personal")}</span> <strong>${esc(t.note)}</strong>${t.due_at ? ` <span style="color:var(--muted);font-size:0.82rem;">(${esc(t.due_at)})</span>` : ""}</div>
+                                    <div class="row" style="gap:6px;">
+                                      <form method="POST" action="/api/todo/complete" style="margin:0;"><input type="hidden" name="csrf" value="${esc(params.csrfToken)}" /><input type="hidden" name="id" value="${t.id}" /><button class="btn" type="submit">Done</button></form>
+                                      <form method="POST" action="/api/todo/delete" style="margin:0;"><input type="hidden" name="csrf" value="${esc(params.csrfToken)}" /><input type="hidden" name="id" value="${t.id}" /><button class="btn btn-danger" type="submit">&times;</button></form>
+                                    </div>
+                                  </div>`
+                                )
+                                .join("")
+                        }
+                        <form method="POST" action="/api/todo/add" class="row" style="margin-top:12px;">
+                          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+                          <input name="contact_name" type="text" placeholder="Person / tag (optional)" style="width:170px" />
+                          <input name="note" type="text" placeholder="Add a to-do item..." required style="flex:1;min-width:180px" />
+                          <button class="btn" type="submit">Add</button>
+                        </form>
+                      </div>`
+                   : ""
+               }
                <div id="trainingPanel" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
                  <form method="POST" action="/api/training/save" style="display:flex;flex-direction:column;gap:8px;">
                    <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
@@ -832,39 +869,6 @@ export function renderDashboardPage(params: {
              </div>`
           : ""
       }
-    </div>
-
-    <div class="card" id="todoCard">
-      <span class="pill">Action Items</span>
-      <div class="row" style="justify-content:space-between;margin-top:8px;gap:10px;flex-wrap:wrap;">
-        <h2 style="margin:0;">AI To-Do List (${(params.todos || []).length})</h2>
-        <form method="POST" action="/api/todo/toggle" style="margin:0;">
-          <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-          <button class="btn ${params.preferences?.auto_todo_enabled !== "0" ? "btn-primary" : ""}" type="submit">Auto To-Do: ${params.preferences?.auto_todo_enabled !== "0" ? "ON" : "OFF"}</button>
-        </form>
-      </div>
-      <p style="font-size:0.86rem;color:var(--muted);margin:8px 0 10px;">When ON, Auto-Draft automatically saves action items from incoming texts here. Your AI agent can also read and update this list anytime.</p>
-      ${
-        (params.todos || []).length === 0
-          ? `<p style="font-size:0.88rem;color:var(--muted);margin:0 0 10px;">No open to-dos yet.</p>`
-          : (params.todos || [])
-              .map(
-                (t) => `<div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:8px;">
-                  <div><span class="pill">${esc(t.contact_name || "Personal")}</span> <strong>${esc(t.note)}</strong>${t.due_at ? ` <span style="color:var(--muted);font-size:0.82rem;">(${esc(t.due_at)})</span>` : ""}</div>
-                  <div class="row" style="gap:6px;">
-                    <form method="POST" action="/api/todo/complete" style="margin:0;"><input type="hidden" name="csrf" value="${esc(params.csrfToken)}" /><input type="hidden" name="id" value="${t.id}" /><button class="btn" type="submit">Done</button></form>
-                    <form method="POST" action="/api/todo/delete" style="margin:0;"><input type="hidden" name="csrf" value="${esc(params.csrfToken)}" /><input type="hidden" name="id" value="${t.id}" /><button class="btn btn-danger" type="submit">&times;</button></form>
-                  </div>
-                </div>`
-              )
-              .join("")
-      }
-      <form method="POST" action="/api/todo/add" class="row" style="margin-top:12px;">
-        <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
-        <input name="contact_name" type="text" placeholder="Person / tag (optional)" style="width:170px" />
-        <input name="note" type="text" placeholder="Add a to-do item..." required style="flex:1;min-width:180px" />
-        <button class="btn" type="submit">Add</button>
-      </form>
     </div>
 
     <div class="card" id="contactsCard">
@@ -1043,6 +1047,18 @@ export function renderDashboardPage(params: {
       }
       function saveWizResume() {
         try { sessionStorage.setItem(wizResumeKey, JSON.stringify({ step: wizStep, goal: wizGoal, ais: wizAis })); } catch (e) {}
+      }
+      function toggleTodoPanel() {
+        var p = document.getElementById('todoPanel');
+        var b = document.getElementById('showTodoBtn');
+        if (!p || !b) return;
+        var open = p.style.display !== 'none';
+        p.style.display = open ? 'none' : 'block';
+        if (open) {
+          b.textContent = b.textContent.replace('Hide', 'Show');
+        } else {
+          b.textContent = b.textContent.replace('Show', 'Hide');
+        }
       }
       function toggleTraining() {
         var p = document.getElementById('trainingPanel');
