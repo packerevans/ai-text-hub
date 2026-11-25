@@ -1082,6 +1082,41 @@ const defaultHandler = {
       return Response.redirect(`${url.origin}/dashboard`, 302);
     }
 
+    if (path === "/api/training/save" && method === "POST") {
+      const form = await request.formData();
+      if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
+        return new Response("Invalid CSRF", { status: 403 });
+      }
+      const allowedKeys = [
+        "texting_style",
+        "auto_draft_rules",
+        "sample_replies_calibration",
+        "schedule_context",
+        "family_last_names",
+        "ignored_chats",
+      ];
+      const now = Date.now();
+      for (const k of allowedKeys) {
+        const val = String(form.get(k) || "").trim();
+        if (val) {
+          await env.DB.prepare(
+            `INSERT INTO user_preferences (user_id, key, value, updated_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+          )
+            .bind(activeUser.id, k, val, now)
+            .run();
+        } else {
+          await env.DB.prepare("DELETE FROM user_preferences WHERE user_id = ? AND key = ?")
+            .bind(activeUser.id, k)
+            .run();
+        }
+      }
+      return renderDashboardFromState(env, url.origin, activeUser.id, appSecret, {
+        notice: "Model training saved.",
+      });
+    }
+
     if (path === "/api/clients/revoke" && method === "POST") {
       const form = await request.formData();
       if (!(await verifyCsrfToken(String(form.get("csrf") || ""), appSecret))) {
@@ -1108,7 +1143,7 @@ async function renderDashboardFromState(
   extra?: { freshApiKey?: string; freshMcpBearer?: string; notice?: string }
 ): Promise<Response> {
   const config = (await getConfig(env.DB, userId))!;
-  const [contacts, chats, outbox, contactsListRes, grantsRes, csrfToken] = await Promise.all([
+  const [contacts, chats, outbox, contactsListRes, grantsRes, csrfToken, preferences] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) as c FROM contacts WHERE user_id = ?").bind(userId).first<{ c: number }>(),
     env.DB.prepare("SELECT COUNT(DISTINCT chat_key) as c FROM messages WHERE user_id = ?").bind(userId).first<{ c: number }>(),
     env.DB.prepare("SELECT COUNT(*) as c FROM outbox WHERE user_id = ?").bind(userId).first<{ c: number }>(),
@@ -1117,6 +1152,7 @@ async function renderDashboardFromState(
       .all<{ id: number; name: string; phone: string }>(),
     env.OAUTH_PROVIDER.listUserGrants(oauthUserKey(userId)),
     createCsrfToken(appSecret),
+    getAllPreferences(env.DB, userId),
   ]);
 
   return renderDashboardPage({
@@ -1127,6 +1163,7 @@ async function renderDashboardFromState(
     chatCount: chats?.c ?? 0,
     pendingOutbox: outbox?.c ?? 0,
     contacts: contactsListRes.results || [],
+    preferences,
     grants: (grantsRes.items || []).map((g) => ({
       id: g.id,
       clientId: g.clientId,

@@ -460,6 +460,7 @@ export function renderDashboardPage(params: {
   chatCount: number;
   pendingOutbox: number;
   contacts: { id: number; name: string; phone: string }[];
+  preferences?: Record<string, string>;
   grants: { id: string; clientId: string; scope: string[]; createdAt?: number }[];
   freshApiKey?: string;
   freshMcpBearer?: string;
@@ -841,6 +842,27 @@ export function renderDashboardPage(params: {
                  <button class="btn btn-primary" type="button" onclick="copyText('autoDraftPromptBox')">Copy Auto-Draft Prompt</button>
                  <a class="btn" href="https://claude.ai/new?q=${encodeURIComponent(autoDraftPrompt)}" target="_blank" rel="noopener">Open in Claude &rarr;</a>
                  <a class="btn" href="https://chatgpt.com/?q=${encodeURIComponent(autoDraftPrompt)}" target="_blank" rel="noopener">Open in ChatGPT &rarr;</a>
+                 <button class="btn" type="button" id="showTrainingBtn" onclick="toggleTraining()">Show Training</button>
+               </div>
+               <div id="trainingPanel" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+                 <form method="POST" action="/api/training/save" style="display:flex;flex-direction:column;gap:8px;">
+                   <input type="hidden" name="csrf" value="${esc(params.csrfToken)}" />
+                   <label style="margin-top:0;">Texting Style (built by your AI)</label>
+                   <textarea name="texting_style" rows="2" placeholder="e.g. Short, casual, lowercase, light punctuation">${esc(params.preferences?.texting_style || "")}</textarea>
+                   <label style="margin-top:4px;">Auto-Draft Rules</label>
+                   <textarea name="auto_draft_rules" rows="2" placeholder="e.g. Keep replies 1-2 sentences, never commit to times without asking">${esc(params.preferences?.auto_draft_rules || "")}</textarea>
+                   <label style="margin-top:4px;">Sample Replies / Calibration</label>
+                   <textarea name="sample_replies_calibration" rows="2" placeholder="Example texts showing your voice">${esc(params.preferences?.sample_replies_calibration || "")}</textarea>
+                   <label style="margin-top:4px;">Schedule Context</label>
+                   <input type="text" name="schedule_context" placeholder="e.g. Busy M/W/F 9am-2pm" value="${esc(params.preferences?.schedule_context || "")}" />
+                   <label style="margin-top:4px;">Priority / Family Last Names</label>
+                   <input type="text" name="family_last_names" placeholder="e.g. Evans, Smith" value="${esc(params.preferences?.family_last_names || "")}" />
+                   <label style="margin-top:4px;">Ignored Chats (comma-separated)</label>
+                   <input type="text" name="ignored_chats" placeholder="e.g. Work Alerts, Family Group" value="${esc(params.preferences?.ignored_chats || "")}" />
+                   <div class="row" style="margin-top:6px;">
+                     <button class="btn btn-primary" type="submit">Save Training</button>
+                   </div>
+                 </form>
                </div>
              </div>`
           : ""
@@ -1023,6 +1045,14 @@ export function renderDashboardPage(params: {
       }
       function saveWizResume() {
         try { sessionStorage.setItem(wizResumeKey, JSON.stringify({ step: wizStep, goal: wizGoal, ais: wizAis })); } catch (e) {}
+      }
+      function toggleTraining() {
+        var p = document.getElementById('trainingPanel');
+        var b = document.getElementById('showTrainingBtn');
+        if (!p || !b) return;
+        var open = p.style.display !== 'none';
+        p.style.display = open ? 'none' : 'block';
+        b.textContent = open ? 'Show Training' : 'Hide Training';
       }
       function filterContacts(q) {
         var needle = (q || '').toLowerCase().trim();
